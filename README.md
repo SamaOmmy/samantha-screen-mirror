@@ -8,6 +8,14 @@ the picture goes straight from your PC to your phone through your own [Tailscale
 - **Private**: only reachable inside your tailnet, protected by a secret token, **view-only**
 - **Easy setup**: one script installs everything and shows a QR code for your phone
 
+<p align="center">
+  <img src="docs/screenshots/login.png" width="230" alt="Sign-in screen">
+  <img src="docs/screenshots/viewer.png" width="230" alt="Live view of the PC screen">
+  <img src="docs/screenshots/settings.png" width="230" alt="Settings: presets, screen picker, sliders">
+</p>
+
+*(Screenshots use a demo picture, not a real desktop.)*
+
 > Status: early (v0.3). Windows only for now. View-only: you cannot control the PC from the phone.
 
 ## Quick start
@@ -130,7 +138,10 @@ Start with `samantha-mirror doctor`. Common causes:
 
 - Windows only (the capture and autostart code is Windows-specific). Ports to macOS/Linux are welcome.
 - View-only **by design** (no remote control, now or later). No audio.
-- The picture is a JPEG stream, not video; very fast motion over a slow connection will look choppy.
+- The picture is a JPEG stream, not video. Unchanged frames cost nothing, so documents and desktops are very
+  light; full-screen video or games over a slow connection will look choppy (use the *Data saver* preset).
+  H.264 video was evaluated and left out on purpose: the good software encoder (x264) is GPL, which would change this
+  project's MIT license for the downloadable build, and hardware encoders only exist on some GPUs.
 
 ## Development
 

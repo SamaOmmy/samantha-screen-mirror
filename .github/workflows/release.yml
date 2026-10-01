@@ -4,6 +4,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:   # manual run: builds the zip and keeps it as a downloadable artifact, no release
 
 permissions:
   contents: write
@@ -23,7 +24,12 @@ jobs:
         run: |
           Copy-Item packaging/README-FIRST.txt dist/SamanthaScreenMirror/
           Compress-Archive -Path dist/SamanthaScreenMirror -DestinationPath SamanthaScreenMirror-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SamanthaScreenMirror-windows
+          path: SamanthaScreenMirror-windows.zip
       - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: SamanthaScreenMirror-windows.zip
           generate_release_notes: true
