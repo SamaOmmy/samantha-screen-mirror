@@ -16,6 +16,7 @@ export interface ServerState {
   width: number;
   height: number;
   capture: string;
+  version: string;
   settings: Settings;
 }
 

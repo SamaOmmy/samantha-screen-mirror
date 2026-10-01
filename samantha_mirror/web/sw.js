@@ -1,5 +1,5 @@
 // Caches the app shell so the app opens instantly. Never touches /api or /stream.
-const CACHE = "screen-mirror-v1";
+const CACHE = "samantha-mirror-v1";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {

@@ -12,6 +12,7 @@ export function useStream(onUnauthorized: () => void) {
   const [status, setStatus] = useState<Status>("connecting");
   const [server, setServer] = useState<ServerState | null>(null);
   const [fps, setFps] = useState(0);
+  const [unreachable, setUnreachable] = useState(false);
 
   const backoff = useRef(500);
   const retryTimer = useRef<number>(0);
@@ -47,6 +48,7 @@ export function useStream(onUnauthorized: () => void) {
       try {
         const s = await api.state();
         if (stopped) return;
+        setUnreachable(false);
         setServer(s);
         const l = last.current;
         const now = performance.now();
@@ -63,7 +65,7 @@ export function useStream(onUnauthorized: () => void) {
         l.tick = s.tick; l.seq = s.seq; l.at = now;
       } catch (e) {
         if (e instanceof Unauthorized) unauthorized.current();
-        else if (!stopped) retry();
+        else if (!stopped) { setUnreachable(true); retry(); }
       }
     };
 
@@ -80,5 +82,5 @@ export function useStream(onUnauthorized: () => void) {
     };
   }, [connect, retry]);
 
-  return { src, status, server, fps, onLoad, onError: retry, reconnect: connect };
+  return { src, status, server, fps, unreachable, onLoad, onError: retry, reconnect: connect };
 }

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
+import Help from "./Help";
 
 export default function Login({ onDone }: { onDone: () => void }) {
   const [token, setToken] = useState("");
@@ -23,7 +24,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
   return (
     <form className="login" onSubmit={submit}>
       <img src="/icon-192.png" alt="" width={72} height={72} />
-      <h1>Screen Mirror</h1>
+      <h1>Samantha Screen Mirror</h1>
       <p className="muted">Enter the access token from your PC's <code>.env</code> file (<code>SM_TOKEN</code>). You only need to do this once per device.</p>
       <input
         type="password" autoComplete="current-password" placeholder="Access token"
@@ -33,6 +34,10 @@ export default function Login({ onDone }: { onDone: () => void }) {
       <button type="submit" className="primary" disabled={busy || token.trim().length === 0}>
         {busy ? "Connecting…" : "Connect"}
       </button>
+      <details className="more">
+        <summary>Need help?</summary>
+        <Help />
+      </details>
     </form>
   );
 }

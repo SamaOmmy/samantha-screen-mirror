@@ -1,113 +1,141 @@
-# screen-mirror
+# Samantha Screen Mirror
 
-View your Windows PC screen live in your phone's browser, over [Tailscale](https://tailscale.com), from any network. No cloud services: traffic goes PC <-> phone only, inside your tailnet.
+See your Windows PC screen live on your phone, from anywhere, privately. No accounts, no cloud, no port forwarding:
+the picture goes straight from your PC to your phone through your own [Tailscale](https://tailscale.com) network.
 
-**View-only** for now. Python + `mss` (capture) + Flask/waitress (MJPEG stream) + a React web app for the phone (installable, with a settings panel).
+- **Installable app** (PWA) with pinch-zoom, screenshots, quality presets and a screen picker
+- **Fast**: about 29 fps at 1440x810 and about 14 ms capture-to-send delay in testing (GPU capture)
+- **Private**: only reachable inside your tailnet, protected by a secret token, **view-only**
+- **Easy setup**: one script installs everything and shows a QR code for your phone
 
-## Security model
+> Status: early (v0.3). Windows only for now. View-only: you cannot control the PC from the phone.
 
-- The server binds **only** to your Tailscale IP (from `tailscale ip -4`). If it can't find one in `100.64.0.0/10`, it exits. It never listens on `0.0.0.0`.
-- The stream and every `/api` route need a secret token (`SM_TOKEN` in `.env`). It's checked in constant time; 10 bad attempts in 5 min locks that IP out (HTTP 429). Only the app's own files (no secrets) are public, so the login screen can load.
-- Traffic is plain HTTP, but Tailscale's WireGuard tunnel encrypts it between your devices.
+## Quick start
 
-## Setup (Windows)
+You need: a Windows 10/11 PC, a phone (Android or iPhone), and a free Tailscale account.
 
-Requirements: Python 3.10+ and Tailscale running on the PC and signed in on the phone (same tailnet).
+1. **Get the code** (or download the ZIP and unpack it):
+   ```powershell
+   git clone https://github.com/SamaOmmy/samantha-screen-mirror
+   cd samantha-screen-mirror
+   ```
+2. **Run the installer** in PowerShell:
+   ```powershell
+   .\install.ps1
+   ```
+   It installs Python if needed (with your permission), then guides you through:
+   Tailscale (offers to install it) -> your secret token -> optional HTTPS -> start-at-logon -> a **QR code**.
+3. **On your phone**: install the free Tailscale app, sign in with the *same account* as the PC, switch it on,
+   then scan the QR code. You are looking at your PC. Use the browser menu to **Install app**.
 
-```powershell
-cd screen-mirror
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-copy .env.example .env
-.\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
+From then on, just open the app on your phone. The server starts by itself when you log in to Windows.
+
+Lost the QR code? Run `samantha-mirror link` on the PC (see below).
+
+## Commands
+
+Run these in the project folder with the virtual environment, e.g. `.\.venv\Scripts\samantha-mirror.exe link`
+(or activate it first with `.\.venv\Scripts\Activate.ps1`).
+
+| Command | What it does |
+|---|---|
+| `samantha-mirror setup` | Guided first-time setup (safe to run again) |
+| `samantha-mirror link` | Show the phone link and QR code |
+| `samantha-mirror doctor` | Check everything and say how to fix problems |
+| `samantha-mirror run` | Start the server in this window (Ctrl+C stops it) |
+| `samantha-mirror autostart install/remove/status` | Start hidden at every Windows logon |
+| `samantha-mirror uninstall` | Remove autostart and the HTTPS setup (keeps your settings) |
+
+## How it works
+
+```
+phone (Tailscale app + browser/PWA)  --WireGuard-->  your PC: Samantha Screen Mirror
+                                                        |- grabs the screen (DXGI GPU capture)
+                                                        |- encodes JPEGs only when the picture changes
+                                                        `- serves the app + stream, token required
 ```
 
-Paste the generated string into `.env` as `SM_TOKEN=...`.
+- The server listens **only** on your Tailscale address (`100.x.y.z`); it refuses to start otherwise.
+- Capture runs only while someone is watching.
+- Optional HTTPS comes from `tailscale serve` (a Tailscale feature that stays inside your tailnet). It is what
+  lets the phone offer a real **Install app**. Without it the app still works in the browser.
 
-## Run
+See [SECURITY.md](SECURITY.md) for the full threat model.
 
-```powershell
-.\.venv\Scripts\python.exe run.py
-```
+## Using the app
 
-It prints the URL to open on your phone. Stop it with Ctrl+C.
+Tap the screen to show/hide the bars. Pinch to zoom, drag to pan, double-tap to reset.
+**Settings** has presets (Data saver / Balanced / Sharp), a screen picker (multi-monitor), fps / quality /
+resolution sliders and a pointer toggle. **Screenshot** saves a full-resolution PNG. The phone screen stays on while you watch.
 
-**Without typing commands:** run `.\autostart.ps1 install` once. The server then starts hidden at every Windows logon (`remove` undoes it, `status` checks it). Logs go to `screen-mirror.log`. After this, just open the app on your phone.
+| Preset | Size | fps | Roughly (constant motion) |
+|---|---|---|---|
+| Data saver | 960x540 | 15 | 0.5 MB/s |
+| Balanced (default) | 1440x810 | 30 | 3 MB/s |
+| Sharp | 1920x1080 | 30 | 5 MB/s |
 
-## Use it from your phone
+A still screen costs almost nothing because frames are only sent when something changes.
 
-1. Make sure the Tailscale app on the phone is **connected** (mobile data works too).
-2. Open `http://<tailscale-ip>:8787/` and enter the token once (or open the `?token=` link printed by `run.py`, which signs you in directly).
-3. In the app: tap to hide/show the bars, pinch to zoom, drag to pan, double-tap to reset. **Settings** has quality presets (Data saver / Balanced / Sharp), screen picker, fps/quality/resolution sliders and the pointer toggle. **Screenshot** saves a full-resolution PNG.
-4. Add it to the home screen for an app-like icon (Share > Add to Home Screen on iPhone; browser menu on Android).
+## Settings file
 
-## Install it as an app (PWA)
-
-The phone only offers a real **Install app** over HTTPS. Tailscale provides it for free:
-
-1. Tailscale admin console > DNS: MagicDNS and **HTTPS Certificates** must be on.
-2. Set `SM_LOOPBACK=1` in `.env` (lets Tailscale's proxy reach the server) and restart it.
-3. Once, on the PC: `tailscale serve --bg --https=443 http://127.0.0.1:8787`
-4. On the phone, open `https://<pc-name>.<tailnet>.ts.net/` (see `tailscale status`), sign in, then use the browser menu > **Install app** (Android) or Share > **Add to Home Screen** (iPhone).
-
-The HTTPS address stays inside your tailnet (`tailscale serve`, not `funnel`). The plain `http://<tailscale-ip>:8787/` address keeps working.
-
-If the page doesn't load, you may need a Windows Firewall rule. Run PowerShell **as Administrator**:
-
-```powershell
-New-NetFirewallRule -DisplayName "screen-mirror (Tailscale only)" -Direction Inbound `
-  -Protocol TCP -LocalPort 8787 -RemoteAddress 100.64.0.0/10 -Action Allow
-```
-
-## Changing the web app
-
-The built app is committed in `mirror/web/`, so you don't need Node to run the project. To edit it (needs Node 20+):
-
-```powershell
-cd web
-npm install
-npm run build    # writes ../mirror/web
-SM_TARGET=http://<tailscale-ip>:8787 npm run dev   # live reload, proxies /api and /stream
-```
-
-## Configuration (`.env`)
+Created by `setup`: `%APPDATA%\SamanthaScreenMirror\.env` (or the project folder when you run from a checkout;
+set `SM_HOME` to use another folder). Defaults are shown below; you rarely need to touch them.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SM_TOKEN` | *(required)* | Access secret, min 16 chars |
-| `SM_PORT` | 8787 | Port on the Tailscale IP |
-| `SM_MONITOR` | 1 | mss monitor index (0 = all monitors combined) |
-| `SM_FPS` | 30 | Frames per second (1-60) |
-| `SM_JPEG_QUALITY` | 70 | 10-95; lower = smaller |
-| `SM_SCALE` | 0.75 | 0.1-1.0 resolution scale; lower saves mobile data |
+| `SM_TOKEN` | generated | Access secret, min 16 chars. **Keep private.** |
+| `SM_PORT` | 8787 | Port on the Tailscale address |
+| `SM_MONITOR` | 1 | Monitor to start with (0 = all combined) |
+| `SM_FPS` | 30 | Max frames per second (1-60) |
+| `SM_JPEG_QUALITY` | 70 | 10-95 |
+| `SM_SCALE` | 0.75 | 0.1-1.0 size of the stream |
 | `SM_MAX_CLIENTS` | 3 | Max simultaneous viewers |
 | `SM_CURSOR` | 1 | Draw the mouse pointer on the stream |
-| `SM_CAPTURE` | auto | `auto` = fast DXGI capture, falling back to mss; or force `dxgi` / `mss` |
-| `SM_LOOPBACK` | 0 | Also listen on 127.0.0.1 (needed for the HTTPS setup above) |
+| `SM_CAPTURE` | auto | `auto` (DXGI, falls back to mss), `dxgi`, or `mss` |
+| `SM_LOOPBACK` | 0 | Also listen on 127.0.0.1 (set by `setup` when you enable HTTPS) |
 
-Fps, quality, scale, screen and pointer can also be changed live from the app (shared by all viewers, reset on restart); `.env` holds the startup defaults.
+The app's Settings sheet changes fps / quality / size / screen live (shared by all viewers; reset on restart).
 
-Measured on a 1080p screen over Tailscale with constant motion: **Data saver** (15 fps, 0.5 scale) about 0.5 MB/s; **Balanced** (the defaults, 1440x810) about 29 fps and 3 MB/s; **Sharp** (full 1080p) about 28 fps and 5 MB/s. Delay from a change on the PC to the frame reaching the phone side is about 15 ms (median) on top of your network's latency. The app's Settings sheet switches between presets. Frames are only sent when something on screen changed, so a static screen costs almost nothing.
+## Troubleshooting
 
-## Notes
+Start with `samantha-mirror doctor`. Common causes:
 
-- **Fullscreen:** uses the Fullscreen API; iPhone Safari doesn't support it for normal pages, so there it just hides the bars.
-- Capture only runs while someone is watching.
-- If the PC is locked or showing a UAC prompt, capture fails; the app shows "PC screen unavailable" and recovers on its own.
-- The page treats a stalled server frame counter as a dropped stream and reconnects with backoff.
+- **Phone says "Can't reach your PC"**: Tailscale is off on the phone, or the PC is asleep / not signed in to Windows.
+  Set Windows to never sleep while plugged in (Settings > System > Power).
+- **"PC screen unavailable"**: the PC is locked or showing a secure prompt (UAC). It recovers when you unlock.
+- **No "Install app" option**: you opened the plain `http://100.x...` address. Run `samantha-mirror setup`, enable
+  HTTPS in your Tailscale admin console if asked, and use the `https://...ts.net` address.
+- **Page does not load at all**: a Windows Firewall rule may be needed for the plain-HTTP address. In an
+  Administrator PowerShell:
+  ```powershell
+  New-NetFirewallRule -DisplayName "Samantha Screen Mirror (Tailscale only)" -Direction Inbound `
+    -Protocol TCP -LocalPort 8787 -RemoteAddress 100.64.0.0/10 -Action Allow
+  ```
+- **Choppy on mobile data**: pick the *Data saver* preset.
 
-## Layout
+## Limitations
+
+- Windows only (the capture and autostart code is Windows-specific). Ports to macOS/Linux are welcome.
+- View-only **by design** (no remote control, now or later). No audio.
+- The picture is a JPEG stream, not video; very fast motion over a slow connection will look choppy.
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Quick version: `pip install -e ".[dev]"`, then `ruff check .` and `pytest`.
+The web app is React + Vite in `web/`; its build output in `samantha_mirror/web/` is committed.
 
 ```
-run.py              entry point (logging, waits for Tailscale, friendly errors)
-autostart.ps1       start at logon via Task Scheduler
-mirror/config.py    .env settings + validation
-mirror/netbind.py   Tailscale IP detection
-mirror/capture.py   shared capture thread (DXGI/mss grab -> change detection -> scale -> JPEG)
-mirror/auth.py      token check + lockout
-mirror/server.py    Flask routes: app files, /stream, /api/*
-mirror/web/         built React app (generated from web/)
-web/                React + TypeScript source (Vite)
+samantha_mirror/
+  cli.py        commands          wizard.py   guided setup + QR
+  runner.py     start the server  doctor.py   health checks
+  server.py     Flask routes      tailscale.py  find the address, HTTPS via tailscale serve
+  capture.py    screen -> JPEG    autostart.py  Task Scheduler
+  auth.py       token + lockout   config.py     settings
+  web/          built web app (from web/)
+web/            React + TypeScript source
+tests/          pytest
 ```
 
-Next up: touch/keyboard control can add an input module and a control endpoint behind the same auth.
+## License
+
+[MIT](LICENSE)

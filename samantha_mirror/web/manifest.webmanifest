@@ -1,6 +1,6 @@
 {
-  "name": "Screen Mirror",
-  "short_name": "Mirror",
+  "name": "Samantha Screen Mirror",
+  "short_name": "Samantha",
   "description": "View your PC screen from your phone over Tailscale",
   "start_url": "/",
   "scope": "/",

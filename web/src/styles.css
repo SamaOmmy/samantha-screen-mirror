@@ -81,3 +81,14 @@ button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visi
 .seg button { flex-direction: column; padding: 6px 4px; line-height: 1.2; }
 .seg small { color: var(--muted); font-size: 11px; }
 .seg button.on { border-color: var(--accent); background: #12263a; }
+
+/* Help / onboarding */
+.more { text-align: left; margin-top: 8px; }
+.more summary { cursor: pointer; color: var(--accent); text-align: center; min-height: 36px; line-height: 36px; }
+.help h3 { margin: 14px 0 6px; font-size: 15px; }
+.help ol { padding-left: 20px; margin: 0; }
+.help li { margin-bottom: 8px; }
+.help a { color: var(--accent); }
+.help p { margin: 4px 0; }
+.about { margin-top: 14px; text-align: center; }
+.login .help button { width: 100%; }

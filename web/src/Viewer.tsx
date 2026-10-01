@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import Settings from "./Settings";
 import { useStream, type Status } from "./useStream";
+import { useWakeLock } from "./useWakeLock";
 import { useZoom } from "./useZoom";
 
 const LABEL: Record<Status, string> = {
@@ -12,11 +13,12 @@ const LABEL: Record<Status, string> = {
 };
 
 export default function Viewer({ onSignedOut }: { onSignedOut: () => void }) {
-  const { src, status, server, fps, onLoad, onError, reconnect } = useStream(onSignedOut);
+  const { src, status, server, fps, unreachable, onLoad, onError, reconnect } = useStream(onSignedOut);
   const [barVisible, setBarVisible] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
+  useWakeLock(status === "live");
   const zoom = useZoom(stage, () => setBarVisible((v) => !v));
 
   useEffect(() => {
@@ -58,7 +60,16 @@ export default function Viewer({ onSignedOut }: { onSignedOut: () => void }) {
             style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})` }}
           />
         )}
-        {status === "capture-error" && (
+        {unreachable && (
+          <div className="overlay">
+            <strong>Can't reach your PC.</strong>
+            <span className="muted">
+              Check that Tailscale is switched on in this phone, and that the PC is on, awake and signed in.
+              Retrying automatically.
+            </span>
+          </div>
+        )}
+        {!unreachable && status === "capture-error" && (
           <div className="overlay">
             <strong>The PC screen can't be captured right now.</strong>
             <span className="muted">{server?.error || "It may be locked or showing a secure prompt."} Retrying automatically.</span>
@@ -82,7 +93,7 @@ export default function Viewer({ onSignedOut }: { onSignedOut: () => void }) {
         <button onClick={toggleFullscreen}>{fullscreen ? "Exit full" : "Fullscreen"}</button>
       </footer>
 
-      {showSettings && <Settings onClose={() => setShowSettings(false)} onSignOut={signOut} current={server?.settings} />}
+      {showSettings && <Settings onClose={() => setShowSettings(false)} onSignOut={signOut} current={server?.settings} server={server} />}
     </div>
   );
 }

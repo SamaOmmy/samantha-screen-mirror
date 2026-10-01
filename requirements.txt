@@ -1,8 +1,2 @@
-flask>=3.0
-mss>=9.0
-pillow>=10.0
-python-dotenv>=1.0
-waitress>=3.0
-dxcam>=0.3
-numpy>=1.26
-opencv-python-headless>=4.8
+# Same as pyproject.toml; `pip install -e .` is the preferred way to install.
+-e .

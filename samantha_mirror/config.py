@@ -1,5 +1,12 @@
-"""Settings loaded from the environment / .env file. Nothing secret is hardcoded."""
+"""Settings loaded from the environment / .env file. Nothing secret is hardcoded.
+
+Where files live: when run from a source checkout (pyproject.toml next to the package)
+everything stays in that folder; otherwise in %APPDATA%/SamanthaScreenMirror.
+Set SM_HOME to use any other folder.
+"""
 import os
+import re
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,6 +14,58 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 MIN_TOKEN_LEN = 16
+
+
+def data_dir() -> Path:
+    override = os.environ.get("SM_HOME", "").strip()
+    if override:
+        path = Path(override)
+    elif (ROOT / "pyproject.toml").exists():
+        path = ROOT
+    else:
+        path = Path(os.environ.get("APPDATA", Path.home())) / "SamanthaScreenMirror"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def env_path() -> Path:
+    return data_dir() / ".env"
+
+
+def log_path() -> Path:
+    return data_dir() / "samantha-mirror.log"
+
+
+def new_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def set_env_value(key: str, value: str) -> None:
+    """Set KEY=value in the .env file, keeping comments and other lines. Creates it if missing."""
+    path = env_path()
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
+    for i, line in enumerate(lines):
+        if pattern.match(line):
+            lines[i] = f"{key}={value}"
+            break
+    else:
+        lines.append(f"{key}={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def ensure_env() -> bool:
+    """Create the .env file with a fresh token if there isn't one. Returns True if created."""
+    path = env_path()
+    if path.exists() and re.search(r"^\s*SM_TOKEN\s*=\s*\S{%d,}" % MIN_TOKEN_LEN, path.read_text(encoding="utf-8"), re.M):
+        return False
+    example = ROOT / ".env.example"
+    if not path.exists():
+        template = example.read_text(encoding="utf-8") if example.exists() else (
+            "# Samantha Screen Mirror settings. Never share or commit this file.\nSM_TOKEN=\n")
+        path.write_text(template, encoding="utf-8")
+    set_env_value("SM_TOKEN", new_token())
+    return True
 
 
 class ConfigError(Exception):
@@ -61,12 +120,12 @@ def _choice(name, default, options):
 
 
 def load() -> Config:
-    load_dotenv(ROOT / ".env")
+    load_dotenv(env_path())
     token = os.environ.get("SM_TOKEN", "").strip()
     if len(token) < MIN_TOKEN_LEN:
         raise ConfigError(
             f"SM_TOKEN is missing or shorter than {MIN_TOKEN_LEN} characters. "
-            "Copy .env.example to .env and set it (see README)."
+            "Run `samantha-mirror setup` to create it."
         )
     return Config(
         token=token,

@@ -7,6 +7,6 @@ const target = process.env.SM_TARGET ?? "http://127.0.0.1:8787";
 
 export default defineConfig({
   plugins: [react()],
-  build: { outDir: "../mirror/web", emptyOutDir: true },
+  build: { outDir: "../samantha_mirror/web", emptyOutDir: true },
   server: { proxy: { "/api": target, "/stream": target } },
 });

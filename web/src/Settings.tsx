@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type MonitorsResponse, type Settings as S } from "./api";
+import { api, type MonitorsResponse, type ServerState, type Settings as S } from "./api";
+import Help from "./Help";
 
 const PRESETS: { name: string; hint: string; values: Pick<S, "fps" | "quality" | "scale"> }[] = [
   { name: "Data saver", hint: "Mobile data", values: { fps: 15, quality: 50, scale: 0.5 } },
@@ -11,9 +12,10 @@ interface Props {
   onClose: () => void;
   onSignOut: () => void;
   current?: S;
+  server?: ServerState | null;
 }
 
-export default function Settings({ onClose, onSignOut, current }: Props) {
+export default function Settings({ onClose, onSignOut, current, server }: Props) {
   const [info, setInfo] = useState<MonitorsResponse | null>(null);
   const [s, setS] = useState<S | null>(current ?? null);
   const [error, setError] = useState("");
@@ -78,6 +80,11 @@ export default function Settings({ onClose, onSignOut, current }: Props) {
             <p className="muted small">These settings apply to everyone watching and reset when the server restarts.</p>
           </>
         )}
+        <Help compact />
+        <p className="muted small about">
+          Samantha Screen Mirror {server?.version ? `v${server.version}` : ""}
+          {server?.capture ? ` · capture: ${server.capture}` : ""}
+        </p>
         <button className="danger" onClick={onSignOut}>Forget this device</button>
       </div>
     </div>

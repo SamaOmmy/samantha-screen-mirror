@@ -1,0 +1,66 @@
+"""Command line: samantha-mirror [run|setup|link|doctor|autostart|uninstall]"""
+import argparse
+import sys
+
+from . import APP_NAME, __version__
+
+
+def _utf8_console() -> None:
+    # The QR code uses block characters; the default Windows console encoding can't print them.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def main(argv=None) -> int:
+    _utf8_console()
+    p = argparse.ArgumentParser(prog="samantha-mirror", description=f"{APP_NAME}: see your PC screen on your phone, over Tailscale.")
+    p.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
+    sub = p.add_subparsers(dest="cmd")
+    sub.add_parser("run", help="start the server (default)")
+    s = sub.add_parser("setup", help="guided first-time setup")
+    s.add_argument("-y", "--yes", action="store_true", help="accept the defaults without asking")
+    sub.add_parser("link", help="show the phone link and QR code")
+    sub.add_parser("doctor", help="check that everything is working")
+    a = sub.add_parser("autostart", help="start automatically when you log in")
+    a.add_argument("action", choices=["install", "remove", "status"])
+    sub.add_parser("uninstall", help="remove autostart and the HTTPS setup (keeps your settings)")
+
+    args = p.parse_args(argv)
+    cmd = args.cmd or "run"
+
+    if cmd == "run":
+        from .runner import run_server
+        return run_server()
+    if cmd == "setup":
+        from .wizard import setup
+        return setup(args.yes)
+    if cmd == "link":
+        from .wizard import show_link
+        return show_link()
+    if cmd == "doctor":
+        from .doctor import run
+        return run()
+    if cmd == "autostart":
+        from . import autostart
+        if args.action == "install":
+            autostart.install()
+            print("Installed and started. It will also start at every logon.")
+        elif args.action == "remove":
+            autostart.remove()
+            print("Removed.")
+        else:
+            print(f"Autostart: {autostart.status()}")
+        return 0
+    if cmd == "uninstall":
+        from . import autostart, config, tailscale
+        autostart.remove()
+        try:
+            tailscale.disable_https(tailscale.status(), config.load().port)
+        except Exception:
+            pass
+        print(f"Removed autostart and the HTTPS setup. Your settings are kept in {config.data_dir()}.")
+        return 0
+    return 2

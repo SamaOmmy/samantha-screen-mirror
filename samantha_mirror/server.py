@@ -10,6 +10,7 @@ import mss
 from flask import Flask, Response, abort, jsonify, make_response, redirect, request, send_from_directory
 from PIL import Image
 
+from . import __version__
 from .auth import COOKIE, Auth
 from .capture import FrameSource
 from .config import LIMITS, Config
@@ -142,7 +143,7 @@ def create_app(cfg: Config, bind_ip: str = "") -> Flask:
     @app.get("/api/state")
     def state():
         # Polled by the page: its frame counters show whether the stream is stuck.
-        return jsonify(source.state() | {"settings": source.settings()})
+        return jsonify(source.state() | {"settings": source.settings(), "version": __version__})
 
     @app.get("/api/monitors")
     def monitors():

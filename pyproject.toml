@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "samantha-screen-mirror"
+version = "0.3.0"
+description = "View your Windows PC screen live on your phone, privately over Tailscale. No cloud."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "flask>=3.0",
+  "mss>=9.0",
+  "pillow>=10.0",
+  "python-dotenv>=1.0",
+  "waitress>=3.0",
+  "qrcode>=7.4",
+  "numpy>=1.26",
+  "dxcam>=0.3; sys_platform == 'win32'",
+  "opencv-python-headless>=4.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+samantha-mirror = "samantha_mirror.cli:main"
+
+[tool.setuptools]
+packages = ["samantha_mirror"]
+
+[tool.setuptools.package-data]
+samantha_mirror = ["web/*", "web/assets/*"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501", "B904"]  # long user-facing messages; we re-raise with friendlier text
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
