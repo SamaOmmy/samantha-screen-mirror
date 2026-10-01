@@ -1,12 +1,28 @@
-"""Entry point: python run.py"""
+"""Entry point: python run.py   (or pythonw run.py to run with no console window)"""
 import ctypes
+import logging
+import logging.handlers
 import sys
+import time
 
 import mss
 from waitress import serve
 
 from mirror import config, netbind
 from mirror.server import create_app
+
+TAILSCALE_WAIT = 120  # seconds; at logon Tailscale may still be starting
+
+log = logging.getLogger("screen-mirror")
+
+
+def _setup_logging() -> None:
+    handlers = [logging.handlers.RotatingFileHandler(
+        config.ROOT / "screen-mirror.log", maxBytes=500_000, backupCount=1, encoding="utf-8")]
+    if sys.stderr is not None:  # None under pythonw
+        handlers.append(logging.StreamHandler(sys.stderr))
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=handlers)
+    logging.getLogger("waitress").setLevel(logging.WARNING)
 
 
 def _dpi_aware() -> None:
@@ -17,30 +33,50 @@ def _dpi_aware() -> None:
         pass
 
 
+def _wait_for_tailscale() -> str:
+    deadline = time.monotonic() + TAILSCALE_WAIT
+    while True:
+        try:
+            return netbind.tailscale_ip()
+        except netbind.BindError as exc:
+            if time.monotonic() >= deadline:
+                raise
+            log.warning("%s Retrying...", exc)
+            time.sleep(5)
+
+
 def main() -> int:
+    _setup_logging()
     _dpi_aware()
     try:
         cfg = config.load()
-        ip = netbind.tailscale_ip()
+        ip = _wait_for_tailscale()
     except (config.ConfigError, netbind.BindError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        log.error("%s", exc)
         return 1
 
     with mss.MSS() as sct:
         monitors = sct.monitors
     if cfg.monitor >= len(monitors):
-        print(f"ERROR: SM_MONITOR={cfg.monitor} but only monitors 0-{len(monitors) - 1} exist.", file=sys.stderr)
+        log.error("SM_MONITOR=%s but only monitors 0-%s exist.", cfg.monitor, len(monitors) - 1)
         return 1
     m = monitors[cfg.monitor]
 
     app = create_app(cfg)
-    print(f"Mirroring monitor {cfg.monitor} ({m['width']}x{m['height']}) "
-          f"at {cfg.fps} fps, quality {cfg.jpeg_quality}, scale {cfg.scale}")
-    print(f"Listening ONLY on {ip}:{cfg.port}")
-    print(f"Open on your phone: http://{ip}:{cfg.port}/?token={cfg.token}")
-    print("Press Ctrl+C to stop.")
-    # send_bytes=1 so each JPEG frame is flushed immediately instead of buffered.
-    serve(app, host=ip, port=cfg.port, threads=cfg.max_clients + 3, send_bytes=1, ident="screen-mirror")
+    log.info("Mirroring monitor %s (%sx%s) at %s fps, quality %s, scale %s",
+             cfg.monitor, m["width"], m["height"], cfg.fps, cfg.jpeg_quality, cfg.scale)
+    log.info("Listening ONLY on %s:%s", ip, cfg.port)
+    # The token is printed to the console only, never written to the log file.
+    if sys.stdout is not None:
+        print(f"Open on your phone: http://{ip}:{cfg.port}/?token={cfg.token}")
+        print("Press Ctrl+C to stop.")
+    try:
+        # send_bytes=1 so each JPEG frame is flushed immediately instead of buffered.
+        serve(app, host=ip, port=cfg.port, threads=cfg.max_clients + 4, send_bytes=1, ident="screen-mirror")
+    except OSError as exc:
+        log.error("Could not listen on %s:%s (%s). Is screen-mirror already running? "
+                  "Close it or change SM_PORT.", ip, cfg.port, exc)
+        return 1
     return 0
 
 

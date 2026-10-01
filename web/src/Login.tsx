@@ -1,0 +1,38 @@
+import { useState, type FormEvent } from "react";
+import { api } from "./api";
+
+export default function Login({ onDone }: { onDone: () => void }) {
+  const [token, setToken] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await api.login(token.trim());
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not connect");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="login" onSubmit={submit}>
+      <img src="/icon-192.png" alt="" width={72} height={72} />
+      <h1>Screen Mirror</h1>
+      <p className="muted">Enter the access token from your PC's <code>.env</code> file (<code>SM_TOKEN</code>). You only need to do this once per device.</p>
+      <input
+        type="password" autoComplete="current-password" placeholder="Access token"
+        value={token} onChange={(e) => setToken(e.target.value)} autoFocus
+      />
+      {error && <p className="error" role="alert">{error}</p>}
+      <button type="submit" className="primary" disabled={busy || token.trim().length === 0}>
+        {busy ? "Connecting…" : "Connect"}
+      </button>
+    </form>
+  );
+}

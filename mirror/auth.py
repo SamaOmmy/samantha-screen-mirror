@@ -1,4 +1,4 @@
-"""Token auth: cookie (or Authorization header / ?token=) + per-IP lockout on failures."""
+"""Token auth: cookie, Authorization header or ?token=, plus per-IP lockout on failures."""
 import hmac
 import threading
 import time
@@ -20,16 +20,17 @@ class Auth:
             return False
         return hmac.compare_digest(candidate.encode(), self._token)
 
-    @staticmethod
-    def extract(request):
-        """Return (token, came_from_query). Cookie wins, then header, then query."""
-        cookie = request.cookies.get(COOKIE)
-        if cookie:
-            return cookie, False
+    def check(self, request):
+        """Return (ok, came_from_query). Tries every place a token can be supplied,
+        so a stale cookie can't block a fresh ?token= link."""
+        if self.valid(request.cookies.get(COOKIE)):
+            return True, False
         header = request.headers.get("Authorization", "")
-        if header.startswith("Bearer "):
-            return header[7:].strip(), False
-        return request.args.get("token", ""), True
+        if header.startswith("Bearer ") and self.valid(header[7:].strip()):
+            return True, False
+        if self.valid(request.args.get("token", "")):
+            return True, True
+        return False, False
 
     def locked_out(self, ip: str) -> bool:
         now = time.monotonic()

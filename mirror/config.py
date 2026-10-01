@@ -22,6 +22,11 @@ class Config:
     jpeg_quality: int
     scale: float
     max_clients: int
+    cursor: bool
+
+
+# Valid ranges for settings that can also be changed live from the web app.
+LIMITS = {"fps": (1, 60), "quality": (10, 95), "scale": (0.1, 1.0)}
 
 
 def _num(name, default, cast, lo, hi):
@@ -33,6 +38,17 @@ def _num(name, default, cast, lo, hi):
     if not lo <= value <= hi:
         raise ConfigError(f"{name} must be between {lo} and {hi}, got {value}")
     return value
+
+
+def _flag(name, default):
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    raise ConfigError(f"{name} must be 1 or 0, got {raw!r}")
 
 
 def load() -> Config:
@@ -47,8 +63,9 @@ def load() -> Config:
         token=token,
         port=_num("SM_PORT", 8787, int, 1024, 65535),
         monitor=_num("SM_MONITOR", 1, int, 0, 32),
-        fps=_num("SM_FPS", 15, int, 1, 60),
-        jpeg_quality=_num("SM_JPEG_QUALITY", 60, int, 10, 95),
-        scale=_num("SM_SCALE", 0.5, float, 0.1, 1.0),
+        fps=_num("SM_FPS", 15, int, *LIMITS["fps"]),
+        jpeg_quality=_num("SM_JPEG_QUALITY", 60, int, *LIMITS["quality"]),
+        scale=_num("SM_SCALE", 0.5, float, *LIMITS["scale"]),
         max_clients=_num("SM_MAX_CLIENTS", 3, int, 1, 16),
+        cursor=_flag("SM_CURSOR", True),
     )
