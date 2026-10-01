@@ -2,12 +2,13 @@
   One-step installer for Samantha Screen Mirror (Windows).
 
   From the project folder, in PowerShell:
-      .\install.ps1
+      .\install.ps1          (add -Yes to accept every default without asking)
 
   It finds (or installs) Python, creates a private virtual environment in .venv,
   installs the app, then starts the guided setup (Tailscale, token, HTTPS, autostart, phone QR code).
   No administrator rights needed. Safe to run again.
 #>
+param([switch]$Yes)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -47,4 +48,5 @@ Write-Host "Installing (this can take a minute)..."
 & .\.venv\Scripts\python.exe -m pip install --quiet -e .
 if ($LASTEXITCODE -ne 0) { Write-Host "Install failed."; exit 1 }
 
-& .\.venv\Scripts\python.exe -m samantha_mirror setup
+$extra = if ($Yes) { @("--yes") } else { @() }
+& .\.venv\Scripts\python.exe -m samantha_mirror setup @extra
