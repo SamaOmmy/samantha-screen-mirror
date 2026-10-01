@@ -15,10 +15,14 @@ def _ps(script: str) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, timeout=60)
 
 
-def _pythonw() -> str:
+def _command() -> tuple[str, str]:
+    """(program, arguments) that start the server with no console window."""
     exe = Path(sys.executable)
-    candidate = exe.with_name("pythonw.exe")
-    return str(candidate if candidate.exists() else exe)
+    if getattr(sys, "frozen", False):  # packaged .exe: a windowless twin sits next to us
+        service = exe.with_name("samantha-mirror-service.exe")
+        return str(service if service.exists() else exe), "run"
+    pythonw = exe.with_name("pythonw.exe")
+    return str(pythonw if pythonw.exists() else exe), "-m samantha_mirror run"
 
 
 def status() -> str:
@@ -30,8 +34,9 @@ def status() -> str:
 
 def install(start_now: bool = True) -> None:
     remove_legacy()
+    program, arguments = _command()
     script = f"""
-$a = New-ScheduledTaskAction -Execute '{_pythonw()}' -Argument '-m samantha_mirror run'
+$a = New-ScheduledTaskAction -Execute '{program}' -Argument '{arguments}'
 $t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
        -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)

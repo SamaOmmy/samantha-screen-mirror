@@ -1,0 +1,29 @@
+name: Release
+
+# Push a tag like v0.3.0 to build the Windows download and attach it to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e . pyinstaller
+      - run: pyinstaller packaging/samantha.spec --noconfirm --distpath dist --workpath build
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item packaging/README-FIRST.txt dist/SamanthaScreenMirror/
+          Compress-Archive -Path dist/SamanthaScreenMirror -DestinationPath SamanthaScreenMirror-windows.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: SamanthaScreenMirror-windows.zip
+          generate_release_notes: true

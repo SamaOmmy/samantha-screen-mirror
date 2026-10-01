@@ -13,6 +13,17 @@ the picture goes straight from your PC to your phone through your own [Tailscale
 ## Quick start
 
 You need: a Windows 10/11 PC, a phone (Android or iPhone), and a free Tailscale account.
+The phone needs **no download from us**: it uses the free Tailscale app plus this app in its browser
+(installable to the home screen). Only the PC needs the installer below.
+
+### Option A: download (no Python, no PowerShell)
+
+1. Download `SamanthaScreenMirror-windows.zip` from the [Releases](../../releases) page and unzip it somewhere permanent.
+2. Double-click `samantha-mirror.exe` and follow the prompts. (Windows may warn about an unrecognised app because
+   the program is not code-signed: choose *More info > Run anyway*.)
+3. Do step 3 below on your phone.
+
+### Option B: from source
 
 1. **Get the code** (or download the ZIP and unpack it):
    ```powershell
@@ -25,7 +36,7 @@ You need: a Windows 10/11 PC, a phone (Android or iPhone), and a free Tailscale 
    ```
    It installs Python if needed (with your permission), then guides you through:
    Tailscale (offers to install it) -> your secret token -> optional HTTPS -> start-at-logon -> a **QR code**.
-3. **On your phone**: install the free Tailscale app, sign in with the *same account* as the PC, switch it on,
+3. **On your phone** (both options): install the free Tailscale app, sign in with the *same account* as the PC, switch it on,
    then scan the QR code. You are looking at your PC. Use the browser menu to **Install app**.
 
 From then on, just open the app on your phone. The server starts by itself when you log in to Windows.
@@ -67,6 +78,8 @@ See [SECURITY.md](SECURITY.md) for the full threat model.
 Tap the screen to show/hide the bars. Pinch to zoom, drag to pan, double-tap to reset.
 **Settings** has presets (Data saver / Balanced / Sharp), a screen picker (multi-monitor), fps / quality /
 resolution sliders and a pointer toggle. **Screenshot** saves a full-resolution PNG. The phone screen stays on while you watch.
+**My PCs** (in Settings) bookmarks your other PCs so you can switch between them; each PC has its own address and
+sign-in.
 
 | Preset | Size | fps | Roughly (constant motion) |
 |---|---|---|---|
@@ -122,6 +135,8 @@ Start with `samantha-mirror doctor`. Common causes:
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Quick version: `pip install -e ".[dev]"`, then `ruff check .` and `pytest`.
+The .exe download is built by CI when a version tag (e.g. `v0.3.0`) is pushed; locally:
+`pip install pyinstaller` then `pyinstaller packaging/samantha.spec --noconfirm`.
 The web app is React + Vite in `web/`; its build output in `samantha_mirror/web/` is committed.
 
 ```
@@ -133,6 +148,7 @@ samantha_mirror/
   auth.py       token + lockout   config.py     settings
   web/          built web app (from web/)
 web/            React + TypeScript source
+packaging/      PyInstaller spec for the Windows .exe download
 tests/          pytest
 ```
 

@@ -12,6 +12,9 @@
   About 29 fps at 1440x810 and about 14 ms median latency in testing.
 - React web app: login, pinch-zoom, live settings, screenshots, install help, keeps the phone awake while viewing,
   clear message when the PC cannot be reached.
+- "My PCs" list in the app for switching between several PCs.
+- Windows .exe build (PyInstaller) with a windowless service twin, built by a release workflow; double-clicking
+  the exe runs the guided setup.
 - Tests and CI.
 
 ## 0.1.0

@@ -35,6 +35,7 @@ samantha_mirror = ["web/*", "web/assets/*"]
 
 [tool.ruff]
 line-length = 120
+extend-exclude = ["packaging"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]

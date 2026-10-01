@@ -14,6 +14,19 @@ def _utf8_console() -> None:
             pass
 
 
+def _double_clicked() -> int:
+    """Packaged .exe opened by double-click: set up the first time, show the phone link afterwards."""
+    from . import autostart, config
+    from .wizard import setup, show_link
+    configured = config.env_path().exists() and autostart.status() != "missing"
+    code = show_link() if configured else setup()
+    try:
+        input("\nPress Enter to close this window...")
+    except EOFError:
+        pass
+    return code
+
+
 def main(argv=None) -> int:
     _utf8_console()
     p = argparse.ArgumentParser(prog="samantha-mirror", description=f"{APP_NAME}: see your PC screen on your phone, over Tailscale.")
@@ -29,6 +42,8 @@ def main(argv=None) -> int:
     sub.add_parser("uninstall", help="remove autostart and the HTTPS setup (keeps your settings)")
 
     args = p.parse_args(argv)
+    if args.cmd is None and getattr(sys, "frozen", False):
+        return _double_clicked()  # the packaged .exe was opened with no command
     cmd = args.cmd or "run"
 
     if cmd == "run":

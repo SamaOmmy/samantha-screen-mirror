@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type MonitorsResponse, type ServerState, type Settings as S } from "./api";
+import Devices from "./Devices";
 import Help from "./Help";
 
 const PRESETS: { name: string; hint: string; values: Pick<S, "fps" | "quality" | "scale"> }[] = [
@@ -80,6 +81,7 @@ export default function Settings({ onClose, onSignOut, current, server }: Props)
             <p className="muted small">These settings apply to everyone watching and reset when the server restarts.</p>
           </>
         )}
+        <Devices />
         <Help compact />
         <p className="muted small about">
           Samantha Screen Mirror {server?.version ? `v${server.version}` : ""}
