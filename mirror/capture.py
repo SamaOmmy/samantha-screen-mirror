@@ -2,6 +2,10 @@
 
 The thread only runs while at least one viewer is connected. Settings can be
 changed while it runs (see FrameSource.configure).
+
+Screen grabbing uses DXGI Desktop Duplication (via dxcam) when available: it is
+several times faster than mss's GDI capture and reports whether the screen changed.
+mss remains as the fallback.
 """
 import ctypes
 import io
@@ -16,7 +20,8 @@ from PIL import Image, ImageDraw
 
 log = logging.getLogger("screen-mirror")
 
-RETRY_DELAY = 1.0  # seconds to wait after a capture error before trying again
+RETRY_DELAY = 1.0   # seconds to wait after a capture error before trying again
+DX_FAIL_LIMIT = 3   # runtime DXGI failures in a row before we stick to mss
 
 
 def _cursor_pos():
@@ -30,10 +35,75 @@ def _cursor_pos():
     return None
 
 
+# -- grabbers: grab() -> (BGRA buffer, (width, height), changed) --------------------------
+class _MssGrabber:
+    name = "mss"
+
+    def __init__(self, monitor: int):
+        self._sct = mss.MSS()  # mss handles are thread-bound on Windows: create in the capture thread
+        if monitor >= len(self._sct.monitors):
+            self._sct.close()
+            raise RuntimeError(f"Monitor {monitor} does not exist")
+        self.region = self._sct.monitors[monitor]
+        self._crc = None
+
+    def grab(self):
+        shot = self._sct.grab(self.region)
+        raw = shot.bgra
+        crc = zlib.crc32(raw)
+        changed, self._crc = crc != self._crc, crc
+        return raw, shot.size, changed
+
+    def close(self):
+        self._sct.close()
+
+
+class _DxGrabber:
+    name = "dxgi"
+
+    def __init__(self, monitor: int):
+        import dxcam  # optional dependency
+        if monitor < 1:
+            raise RuntimeError("DXGI capture can't combine monitors")
+        with mss.MSS() as sct:
+            if monitor >= len(sct.monitors):
+                raise RuntimeError(f"Monitor {monitor} does not exist")
+            self.region = sct.monitors[monitor]
+        self._cam = dxcam.create(output_idx=monitor - 1, output_color="BGRA")
+        if (self._cam.width, self._cam.height) != (self.region["width"], self.region["height"]):
+            self._cam.release()
+            raise RuntimeError("DXGI output doesn't match the selected monitor")
+        self._last = None
+        # The first grab returns the current picture; wait briefly for it.
+        deadline = time.monotonic() + 1.5
+        while self._last is None:
+            self._last = self._cam.grab()
+            if self._last is None:
+                if time.monotonic() > deadline:
+                    self._cam.release()
+                    raise RuntimeError("DXGI produced no frame")
+                time.sleep(0.01)
+        self._first = True
+
+    def grab(self):
+        frame = self._cam.grab()  # None = nothing changed since the last call
+        changed = frame is not None or self._first
+        self._first = False
+        if frame is not None:
+            self._last = frame
+        h, w = self._last.shape[:2]
+        return self._last, (w, h), changed
+
+    def close(self):
+        self._cam.release()
+
+
 class FrameSource:
-    def __init__(self, monitor: int, fps: int, quality: int, scale: float, cursor: bool = True):
+    def __init__(self, monitor: int, fps: int, quality: int, scale: float, cursor: bool = True,
+                 backend: str = "auto"):
         self._cond = threading.Condition()
         self._settings = {"monitor": monitor, "fps": fps, "quality": quality, "scale": scale, "cursor": cursor}
+        self._backend = backend  # auto | dxgi | mss
         self._frame = b""
         self._seq = 0      # bumps only when the picture changed
         self._tick = 0     # bumps every capture loop; proves the thread is alive
@@ -41,6 +111,7 @@ class FrameSource:
         self._thread = None
         self._error = ""
         self._size = (0, 0)  # size of the last encoded frame
+        self._grabber_name = ""
 
     # -- settings ------------------------------------------------------------
     def settings(self) -> dict:
@@ -75,6 +146,7 @@ class FrameSource:
             return {
                 "seq": self._seq, "tick": self._tick, "viewers": self._clients,
                 "error": self._error, "width": self._size[0], "height": self._size[1],
+                "capture": self._grabber_name,
             }
 
     def wait_frame(self, last_seq: int, timeout: float = 5.0):
@@ -86,63 +158,102 @@ class FrameSource:
             return self._seq, self._frame
 
     # -- capture loop --------------------------------------------------------
-    def _run(self) -> None:
-        last_key = None
-        while True:
+    def _open_grabber(self, monitor: int):
+        if self._backend != "mss" and not self._dx_disabled:
             try:
-                # mss handles are thread-bound on Windows, so create it here.
-                with mss.MSS() as sct:
-                    monitor = None
-                    region = None
-                    while True:
-                        started = time.monotonic()
+                return _DxGrabber(monitor)
+            except Exception as exc:
+                if self._backend == "dxgi":
+                    raise
+                log.info("DXGI capture unavailable (%s); using mss", exc)
+        return _MssGrabber(monitor)
+
+    def _run(self) -> None:
+        self._dx_disabled = False
+        dx_failures = 0
+        grabber = None
+        monitor = None
+        last_key = None
+        frame_id = 0
+        try:
+            while True:
+                try:
+                    started = time.monotonic()
+                    with self._cond:
+                        # Decide to stop and clear _thread in one step, so a viewer
+                        # arriving right now always starts a fresh thread.
+                        if self._clients <= 0:
+                            self._thread = None
+                            return
+                        s = dict(self._settings)
+                    if grabber is None or s["monitor"] != monitor:
+                        if grabber:
+                            grabber.close()
+                            grabber = None
+                        grabber = self._open_grabber(s["monitor"])
+                        monitor, last_key = s["monitor"], None
+                        log.info("capture: monitor %s via %s", monitor, grabber.name)
                         with self._cond:
-                            # Decide to stop and clear _thread in one step, so a viewer
-                            # arriving right now always starts a fresh thread.
-                            if self._clients <= 0:
-                                self._thread = None
-                                return
-                            s = dict(self._settings)
-                        if s["monitor"] != monitor:
-                            if s["monitor"] >= len(sct.monitors):
-                                raise RuntimeError(f"Monitor {s['monitor']} does not exist")
-                            monitor, region, last_key = s["monitor"], sct.monitors[s["monitor"]], None
-                        shot = sct.grab(region)
-                        raw = shot.bgra
-                        # Skip encoding and sending when nothing on screen changed.
-                        pos = _cursor_pos() if s["cursor"] else None
-                        key = (zlib.crc32(raw), pos, s["scale"], s["quality"])
-                        jpeg = None
-                        if key != last_key:
-                            last_key = key
-                            jpeg, size = self._encode(shot.size, raw, s, region, pos)
-                        with self._cond:
-                            self._tick += 1
-                            self._error = ""
-                            if jpeg is not None:
-                                self._frame, self._size = jpeg, size
-                                self._seq += 1
-                            self._cond.notify_all()
-                        delay = 1.0 / s["fps"] - (time.monotonic() - started)
-                        if delay > 0:
-                            time.sleep(delay)
-            except Exception as exc:  # e.g. locked screen, UAC prompt, display change
-                log.warning("capture error: %s", exc)
-                with self._cond:
-                    self._error = str(exc) or exc.__class__.__name__
-                    self._cond.notify_all()
-                    if self._clients <= 0:
-                        self._thread = None
-                        return
-                last_key = None
-                time.sleep(RETRY_DELAY)
+                            self._grabber_name = grabber.name
+
+                    buf, size, changed = grabber.grab()
+                    dx_failures = 0
+                    frame_id += changed
+                    # Skip encoding and sending when nothing on screen changed.
+                    pos = _cursor_pos() if s["cursor"] else None
+                    key = (frame_id, pos, s["scale"], s["quality"])
+                    jpeg = None
+                    if key != last_key:
+                        last_key = key
+                        jpeg, out_size = self._encode(size, buf, s, grabber.region, pos)
+                    with self._cond:
+                        self._tick += 1
+                        self._error = ""
+                        if jpeg is not None:
+                            self._frame, self._size = jpeg, out_size
+                            self._seq += 1
+                        self._cond.notify_all()
+                    delay = 1.0 / s["fps"] - (time.monotonic() - started)
+                    if delay > 0:
+                        time.sleep(delay)
+                except Exception as exc:  # e.g. locked screen, UAC prompt, display change
+                    log.warning("capture error: %s", exc)
+                    if grabber is not None:
+                        if grabber.name == "dxgi" and self._backend == "auto":
+                            dx_failures += 1
+                            if dx_failures >= DX_FAIL_LIMIT:
+                                log.warning("DXGI keeps failing; switching to mss")
+                                self._dx_disabled = True
+                        try:
+                            grabber.close()
+                        except Exception:
+                            pass
+                        grabber = None
+                    with self._cond:
+                        self._error = str(exc) or exc.__class__.__name__
+                        self._cond.notify_all()
+                        if self._clients <= 0:
+                            self._thread = None
+                            return
+                    time.sleep(RETRY_DELAY)
+        finally:
+            if grabber is not None:
+                try:
+                    grabber.close()
+                except Exception:
+                    pass
 
     @staticmethod
-    def _encode(size, raw, s, region, cursor_pos):
-        img = Image.frombytes("RGB", size, raw, "raw", "BGRX")
+    def _encode(size, buf, s, region, cursor_pos):
+        img = Image.frombuffer("RGB", size, buf, "raw", "BGRX", 0, 1)
         scale = s["scale"]
         if scale < 1.0:
-            img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))), Image.BILINEAR)
+            target = (max(1, int(img.width * scale)), max(1, int(img.height * scale)))
+            factor = int(1 / scale)
+            if factor >= 2:
+                img = img.reduce(factor)  # box filter: fast, and sharp for text
+            if img.size != target:
+                img = img.resize(target, Image.BILINEAR)
         if cursor_pos:
             x = (cursor_pos[0] - region["left"]) * scale
             y = (cursor_pos[1] - region["top"]) * scale
@@ -150,8 +261,7 @@ class FrameSource:
                 k = max(0.6, min(1.5, img.width / 1000)) * 12
                 arrow = [(x, y), (x, y + 1.5 * k), (x + 0.4 * k, y + 1.15 * k), (x + 0.75 * k, y + 1.7 * k),
                          (x + 1.0 * k, y + 1.55 * k), (x + 0.65 * k, y + 1.0 * k), (x + 1.05 * k, y + 1.0 * k)]
-                d = ImageDraw.Draw(img)
-                d.polygon(arrow, fill=(255, 255, 255), outline=(0, 0, 0))
-        buf = io.BytesIO()
-        img.save(buf, "JPEG", quality=s["quality"])
-        return buf.getvalue(), img.size
+                ImageDraw.Draw(img).polygon(arrow, fill=(255, 255, 255), outline=(0, 0, 0))
+        out = io.BytesIO()
+        img.save(out, "JPEG", quality=s["quality"])
+        return out.getvalue(), img.size

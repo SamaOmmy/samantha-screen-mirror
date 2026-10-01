@@ -62,20 +62,21 @@ def main() -> int:
         return 1
     m = monitors[cfg.monitor]
 
-    app = create_app(cfg)
+    app = create_app(cfg, ip)
     log.info("Mirroring monitor %s (%sx%s) at %s fps, quality %s, scale %s",
              cfg.monitor, m["width"], m["height"], cfg.fps, cfg.jpeg_quality, cfg.scale)
-    log.info("Listening ONLY on %s:%s", ip, cfg.port)
+    listen = f"{ip}:{cfg.port}" + (f" 127.0.0.1:{cfg.port}" if cfg.loopback else "")
+    log.info("Listening ONLY on %s", listen.replace(" ", " and "))
     # The token is printed to the console only, never written to the log file.
     if sys.stdout is not None:
         print(f"Open on your phone: http://{ip}:{cfg.port}/?token={cfg.token}")
         print("Press Ctrl+C to stop.")
     try:
         # send_bytes=1 so each JPEG frame is flushed immediately instead of buffered.
-        serve(app, host=ip, port=cfg.port, threads=cfg.max_clients + 4, send_bytes=1, ident="screen-mirror")
+        serve(app, listen=listen, threads=cfg.max_clients + 4, send_bytes=1, ident="screen-mirror")
     except OSError as exc:
-        log.error("Could not listen on %s:%s (%s). Is screen-mirror already running? "
-                  "Close it or change SM_PORT.", ip, cfg.port, exc)
+        log.error("Could not listen on %s (%s). Is screen-mirror already running? "
+                  "Close it or change SM_PORT.", listen, exc)
         return 1
     return 0
 

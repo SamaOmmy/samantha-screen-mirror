@@ -56,18 +56,31 @@ def _parse_settings(data, monitor_count):
     return changes, None
 
 
-def create_app(cfg: Config) -> Flask:
+def create_app(cfg: Config, bind_ip: str = "") -> Flask:
+    # Addresses the HTTPS proxy (`tailscale serve`) connects from.
+    proxies = {bind_ip, "127.0.0.1"} if cfg.loopback else {bind_ip}
     app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
     auth = Auth(cfg.token)
-    source = FrameSource(cfg.monitor, cfg.fps, cfg.jpeg_quality, cfg.scale, cfg.cursor)
+    source = FrameSource(cfg.monitor, cfg.fps, cfg.jpeg_quality, cfg.scale, cfg.cursor, cfg.capture)
+
+    def client_ip():
+        # Behind `tailscale serve` every request comes from our own address, so the
+        # real client is in X-Forwarded-For. Only trusted when it came from ourselves.
+        if request.remote_addr in proxies:
+            forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            if forwarded:
+                return forwarded
+        return request.remote_addr or "?"
 
     def set_cookie(resp, token):
-        resp.set_cookie(COOKIE, token, max_age=COOKIE_MAX_AGE, httponly=True, samesite="Strict", path="/")
+        https = request.headers.get("X-Forwarded-Proto") == "https" and request.remote_addr in proxies
+        resp.set_cookie(COOKIE, token, max_age=COOKIE_MAX_AGE, httponly=True, samesite="Strict",
+                        secure=https, path="/")
         return resp
 
     @app.before_request
     def require_token():
-        ip = request.remote_addr or "?"
+        ip = client_ip()
         if auth.locked_out(ip):
             abort(429)
         # Opening the page with ?token=... sets the cookie and drops the token from the URL.
@@ -115,7 +128,7 @@ def create_app(cfg: Config) -> Flask:
         data = request.get_json(silent=True) or {}
         token = data.get("token", "") if isinstance(data, dict) else ""
         if not isinstance(token, str) or not auth.valid(token.strip()):
-            auth.record_failure(request.remote_addr or "?")
+            auth.record_failure(client_ip())
             return jsonify(error="Wrong token"), 401
         return set_cookie(make_response(jsonify(ok=True)), token.strip())
 

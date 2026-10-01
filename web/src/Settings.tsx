@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { api, type MonitorsResponse, type Settings as S } from "./api";
 
 const PRESETS: { name: string; hint: string; values: Pick<S, "fps" | "quality" | "scale"> }[] = [
-  { name: "Data saver", hint: "Mobile data", values: { fps: 8, quality: 45, scale: 0.4 } },
-  { name: "Balanced", hint: "Default", values: { fps: 15, quality: 60, scale: 0.5 } },
-  { name: "Sharp", hint: "Wi-Fi", values: { fps: 20, quality: 75, scale: 0.8 } },
+  { name: "Data saver", hint: "Mobile data", values: { fps: 15, quality: 50, scale: 0.5 } },
+  { name: "Balanced", hint: "Default", values: { fps: 30, quality: 70, scale: 0.75 } },
+  { name: "Sharp", hint: "Wi-Fi", values: { fps: 30, quality: 85, scale: 1 } },
 ];
 
 interface Props {

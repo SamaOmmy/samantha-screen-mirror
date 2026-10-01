@@ -41,7 +41,16 @@ It prints the URL to open on your phone. Stop it with Ctrl+C.
 3. In the app: tap to hide/show the bars, pinch to zoom, drag to pan, double-tap to reset. **Settings** has quality presets (Data saver / Balanced / Sharp), screen picker, fps/quality/resolution sliders and the pointer toggle. **Screenshot** saves a full-resolution PNG.
 4. Add it to the home screen for an app-like icon (Share > Add to Home Screen on iPhone; browser menu on Android).
 
-Chrome's "Install app" prompt and offline caching only work over HTTPS; plain `http://100.x.y.z` is not a secure context, so there the app still works but is a shortcut. For full install, enable HTTPS in the Tailscale admin console and put `tailscale serve` in front (not set up here).
+## Install it as an app (PWA)
+
+The phone only offers a real **Install app** over HTTPS. Tailscale provides it for free:
+
+1. Tailscale admin console > DNS: MagicDNS and **HTTPS Certificates** must be on.
+2. Set `SM_LOOPBACK=1` in `.env` (lets Tailscale's proxy reach the server) and restart it.
+3. Once, on the PC: `tailscale serve --bg --https=443 http://127.0.0.1:8787`
+4. On the phone, open `https://<pc-name>.<tailnet>.ts.net/` (see `tailscale status`), sign in, then use the browser menu > **Install app** (Android) or Share > **Add to Home Screen** (iPhone).
+
+The HTTPS address stays inside your tailnet (`tailscale serve`, not `funnel`). The plain `http://<tailscale-ip>:8787/` address keeps working.
 
 If the page doesn't load, you may need a Windows Firewall rule. Run PowerShell **as Administrator**:
 
@@ -68,15 +77,17 @@ SM_TARGET=http://<tailscale-ip>:8787 npm run dev   # live reload, proxies /api a
 | `SM_TOKEN` | *(required)* | Access secret, min 16 chars |
 | `SM_PORT` | 8787 | Port on the Tailscale IP |
 | `SM_MONITOR` | 1 | mss monitor index (0 = all monitors combined) |
-| `SM_FPS` | 15 | Frames per second (1-60) |
-| `SM_JPEG_QUALITY` | 60 | 10-95; lower = smaller |
-| `SM_SCALE` | 0.5 | 0.1-1.0 resolution scale; lower saves mobile data |
+| `SM_FPS` | 30 | Frames per second (1-60) |
+| `SM_JPEG_QUALITY` | 70 | 10-95; lower = smaller |
+| `SM_SCALE` | 0.75 | 0.1-1.0 resolution scale; lower saves mobile data |
 | `SM_MAX_CLIENTS` | 3 | Max simultaneous viewers |
 | `SM_CURSOR` | 1 | Draw the mouse pointer on the stream |
+| `SM_CAPTURE` | auto | `auto` = fast DXGI capture, falling back to mss; or force `dxgi` / `mss` |
+| `SM_LOOPBACK` | 0 | Also listen on 127.0.0.1 (needed for the HTTPS setup above) |
 
 Fps, quality, scale, screen and pointer can also be changed live from the app (shared by all viewers, reset on restart); `.env` holds the startup defaults.
 
-Rough data use at the defaults on a 1280x720 screen: about 0.5 MB/s while connected. For mobile data try `SM_SCALE=0.4`, `SM_JPEG_QUALITY=45`, `SM_FPS=8`. Frames are only sent when something on screen changed, so a static screen costs almost nothing.
+Measured on a 1080p screen over Tailscale with constant motion: **Data saver** (15 fps, 0.5 scale) about 0.5 MB/s; **Balanced** (the defaults, 1440x810) about 22 fps and 1.8 MB/s; **Sharp** (full 1080p, quality 85) about 29 fps and 6 MB/s. The app's Settings sheet switches between them. Frames are only sent when something on screen changed, so a static screen costs almost nothing.
 
 ## Notes
 
@@ -92,7 +103,7 @@ run.py              entry point (logging, waits for Tailscale, friendly errors)
 autostart.ps1       start at logon via Task Scheduler
 mirror/config.py    .env settings + validation
 mirror/netbind.py   Tailscale IP detection
-mirror/capture.py   shared capture thread (mss -> change detection -> scale -> JPEG)
+mirror/capture.py   shared capture thread (DXGI/mss grab -> change detection -> scale -> JPEG)
 mirror/auth.py      token check + lockout
 mirror/server.py    Flask routes: app files, /stream, /api/*
 mirror/web/         built React app (generated from web/)

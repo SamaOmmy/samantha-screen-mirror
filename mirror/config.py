@@ -23,6 +23,8 @@ class Config:
     scale: float
     max_clients: int
     cursor: bool
+    loopback: bool
+    capture: str
 
 
 # Valid ranges for settings that can also be changed live from the web app.
@@ -51,6 +53,13 @@ def _flag(name, default):
     raise ConfigError(f"{name} must be 1 or 0, got {raw!r}")
 
 
+def _choice(name, default, options):
+    raw = os.environ.get(name, "").strip().lower() or default
+    if raw not in options:
+        raise ConfigError(f"{name} must be one of {', '.join(options)}, got {raw!r}")
+    return raw
+
+
 def load() -> Config:
     load_dotenv(ROOT / ".env")
     token = os.environ.get("SM_TOKEN", "").strip()
@@ -63,9 +72,11 @@ def load() -> Config:
         token=token,
         port=_num("SM_PORT", 8787, int, 1024, 65535),
         monitor=_num("SM_MONITOR", 1, int, 0, 32),
-        fps=_num("SM_FPS", 15, int, *LIMITS["fps"]),
-        jpeg_quality=_num("SM_JPEG_QUALITY", 60, int, *LIMITS["quality"]),
-        scale=_num("SM_SCALE", 0.5, float, *LIMITS["scale"]),
+        fps=_num("SM_FPS", 30, int, *LIMITS["fps"]),
+        jpeg_quality=_num("SM_JPEG_QUALITY", 70, int, *LIMITS["quality"]),
+        scale=_num("SM_SCALE", 0.75, float, *LIMITS["scale"]),
         max_clients=_num("SM_MAX_CLIENTS", 3, int, 1, 16),
         cursor=_flag("SM_CURSOR", True),
+        loopback=_flag("SM_LOOPBACK", False),
+        capture=_choice("SM_CAPTURE", "auto", ("auto", "dxgi", "mss")),
     )
