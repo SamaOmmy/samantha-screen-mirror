@@ -101,3 +101,8 @@ button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visi
   min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--panel); color: var(--text); font: inherit; width: 100%;
 }
+
+/* Update notice */
+.update-note { background: #12263a; border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 14px 0 0; }
+.update-note a { color: var(--accent); }
+.badge { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: 6px; display: inline-block; }

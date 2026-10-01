@@ -19,6 +19,17 @@ def _double_clicked() -> int:
     from . import autostart, config
     from .wizard import setup, show_link
     configured = config.env_path().exists() and autostart.status() != "missing"
+    if configured:
+        from .updater import UpdateError, available, run_update
+        from .wizard import ask
+        try:
+            newer = available()
+        except UpdateError:
+            newer = None  # offline: skip the update offer
+        if newer:
+            print(f"A new version is available: v{newer.version} (you have v{__version__}).")
+            if ask("Update now?", True):
+                return run_update(yes=True)  # this window closes while the new version installs
     code = show_link() if configured else setup()
     try:
         input("\nPress Enter to close this window...")
@@ -39,6 +50,9 @@ def main(argv=None) -> int:
     sub.add_parser("doctor", help="check that everything is working")
     a = sub.add_parser("autostart", help="start automatically when you log in")
     a.add_argument("action", choices=["install", "remove", "status"])
+    u = sub.add_parser("update", help="check for a new version and install it")
+    u.add_argument("--check", action="store_true", help="only say whether an update is available")
+    u.add_argument("-y", "--yes", action="store_true", help="install without asking")
     sub.add_parser("uninstall", help="remove autostart and the HTTPS setup (keeps your settings)")
 
     args = p.parse_args(argv)
@@ -69,6 +83,9 @@ def main(argv=None) -> int:
         else:
             print(f"Autostart: {autostart.status()}")
         return 0
+    if cmd == "update":
+        from .updater import run_update
+        return run_update(args.check, args.yes)
     if cmd == "uninstall":
         from . import autostart, config, tailscale
         autostart.remove()

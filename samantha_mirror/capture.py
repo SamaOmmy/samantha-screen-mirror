@@ -28,7 +28,8 @@ log = logging.getLogger("screen-mirror")
 
 RETRY_DELAY = 1.0   # seconds to wait after a capture error before trying again
 IDLE_POLL = 0.002   # seconds between checks while the screen isn't changing
-DX_FAIL_LIMIT = 3   # runtime DXGI failures in a row before we stick to mss
+DX_FAIL_LIMIT = 3   # runtime DXGI failures in a row before we fall back to mss
+DX_RETRY_AFTER = 300  # seconds on mss before trying the fast DXGI path again (e.g. after the PC was locked)
 
 
 def _cursor_pos():
@@ -166,7 +167,7 @@ class FrameSource:
 
     # -- capture loop --------------------------------------------------------
     def _open_grabber(self, monitor: int):
-        if self._backend != "mss" and not self._dx_disabled:
+        if self._backend != "mss" and time.monotonic() >= self._dx_retry_at:
             try:
                 return _DxGrabber(monitor)
             except Exception as exc:
@@ -176,7 +177,7 @@ class FrameSource:
         return _MssGrabber(monitor)
 
     def _run(self) -> None:
-        self._dx_disabled = False
+        self._dx_retry_at = 0.0
         dx_failures = 0
         grabber = None
         monitor = None
@@ -236,8 +237,10 @@ class FrameSource:
                         if grabber.name == "dxgi" and self._backend == "auto":
                             dx_failures += 1
                             if dx_failures >= DX_FAIL_LIMIT:
-                                log.warning("DXGI keeps failing; switching to mss")
-                                self._dx_disabled = True
+                                log.warning("DXGI keeps failing; using mss for %s s, then trying DXGI again",
+                                            DX_RETRY_AFTER)
+                                self._dx_retry_at = time.monotonic() + DX_RETRY_AFTER
+                                dx_failures = 0
                         try:
                             grabber.close()
                         except Exception:

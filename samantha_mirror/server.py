@@ -10,7 +10,7 @@ import mss
 from flask import Flask, Response, abort, jsonify, make_response, redirect, request, send_from_directory
 from PIL import Image
 
-from . import __version__
+from . import __version__, updater
 from .auth import COOKIE, Auth
 from .capture import FrameSource
 from .config import LIMITS, Config
@@ -57,26 +57,19 @@ def _parse_settings(data, monitor_count):
     return changes, None
 
 
-def create_app(cfg: Config, bind_ip: str = "") -> Flask:
-    # Addresses the HTTPS proxy (`tailscale serve`) connects from.
-    proxies = {bind_ip, "127.0.0.1"} if cfg.loopback else {bind_ip}
+def create_app(cfg: Config) -> Flask:
     app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
     auth = Auth(cfg.token)
     source = FrameSource(cfg.monitor, cfg.fps, cfg.jpeg_quality, cfg.scale, cfg.cursor, cfg.capture)
 
     def client_ip():
-        # Behind `tailscale serve` every request comes from our own address, so the
-        # real client is in X-Forwarded-For. Only trusted when it came from ourselves.
-        if request.remote_addr in proxies:
-            forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-            if forwarded:
-                return forwarded
+        # Behind `tailscale serve`, waitress (told to trust only the local proxy, see runner.py)
+        # already puts the real client address in remote_addr and the real scheme in is_secure.
         return request.remote_addr or "?"
 
     def set_cookie(resp, token):
-        https = request.headers.get("X-Forwarded-Proto") == "https" and request.remote_addr in proxies
         resp.set_cookie(COOKIE, token, max_age=COOKIE_MAX_AGE, httponly=True, samesite="Strict",
-                        secure=https, path="/")
+                        secure=request.is_secure, path="/")
         return resp
 
     @app.before_request
@@ -143,7 +136,8 @@ def create_app(cfg: Config, bind_ip: str = "") -> Flask:
     @app.get("/api/state")
     def state():
         # Polled by the page: its frame counters show whether the stream is stuck.
-        return jsonify(source.state() | {"settings": source.settings(), "version": __version__})
+        return jsonify(source.state() | {"settings": source.settings(), "version": __version__,
+                                                    "update": updater.cached_info()})
 
     @app.get("/api/monitors")
     def monitors():

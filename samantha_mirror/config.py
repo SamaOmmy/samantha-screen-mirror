@@ -84,6 +84,7 @@ class Config:
     cursor: bool
     loopback: bool
     capture: str
+    update_check: bool
 
 
 # Valid ranges for settings that can also be changed live from the web app.
@@ -138,4 +139,5 @@ def load() -> Config:
         cursor=_flag("SM_CURSOR", True),
         loopback=_flag("SM_LOOPBACK", False),
         capture=_choice("SM_CAPTURE", "auto", ("auto", "dxgi", "mss")),
+        update_check=_flag("SM_UPDATE_CHECK", True),
     )

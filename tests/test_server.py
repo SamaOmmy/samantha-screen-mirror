@@ -1,4 +1,13 @@
+import http.client
+import json
+import threading
+import time
+
+from waitress import create_server
+
+from samantha_mirror import runner
 from samantha_mirror.auth import COOKIE, MAX_FAILS
+from samantha_mirror.server import create_app
 from tests.conftest import TOKEN
 
 BEARER = {"Authorization": f"Bearer {TOKEN}"}
@@ -51,15 +60,65 @@ def test_lockout_blocks_even_the_right_token(client):
     assert client.get("/api/state", headers=BEARER).status_code == 429
 
 
-def test_lockout_uses_forwarded_client_only_from_the_proxy(cfg):
-    """Behind `tailscale serve` every request comes from our own address, so X-Forwarded-For
-    keeps one bad device from locking out the others."""
-    from samantha_mirror.server import create_app
-    c = create_app(cfg, "100.64.0.1").test_client()
-    proxy = {"REMOTE_ADDR": "100.64.0.1"}
-    for _ in range(MAX_FAILS):
-        c.get("/api/state", headers={"X-Forwarded-For": "100.64.0.9"}, environ_overrides=proxy)
-    assert c.get("/api/state", headers={"X-Forwarded-For": "100.64.0.9", **BEARER},
-                 environ_overrides=proxy).status_code == 429
-    assert c.get("/api/state", headers={"X-Forwarded-For": "100.64.0.8", **BEARER},
-                 environ_overrides=proxy).status_code == 200
+def _serve(cfg, **trust):
+    """A real waitress server on a free port, set up the way runner.py does it."""
+    server = create_server(create_app(cfg), listen="127.0.0.1:0", **trust)
+    threading.Thread(target=server.run, daemon=True).start()
+    time.sleep(0.2)
+    return server
+
+
+def _get(port, path, headers=None):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request("GET", path, headers=headers or {})
+    resp = conn.getresponse()
+    resp.read()
+    conn.close()
+    return resp.status
+
+
+def test_behind_the_https_proxy_each_device_is_locked_out_separately(cfg):
+    """Regression: waitress drops X-Forwarded-For unless the proxy is trusted, which made every
+    HTTPS client look like 127.0.0.1, so one phone's bad tries locked out all phones."""
+    server = _serve(cfg, **runner.PROXY_TRUST)
+    port = server.effective_port
+    try:
+        for _ in range(MAX_FAILS):
+            _get(port, "/api/state", {"X-Forwarded-For": "100.64.0.9"})
+        assert _get(port, "/api/state", {"X-Forwarded-For": "100.64.0.9", **BEARER}) == 429
+        assert _get(port, "/api/state", {"X-Forwarded-For": "100.64.0.8", **BEARER}) == 200
+    finally:
+        server.close()
+
+
+def test_forwarded_headers_are_ignored_from_an_untrusted_source(cfg):
+    """Someone who is not the local proxy cannot pick their own client address."""
+    server = _serve(cfg, trusted_proxy="10.9.9.9", trusted_proxy_count=1,
+                    trusted_proxy_headers={"x-forwarded-for", "x-forwarded-proto"})
+    port = server.effective_port
+    try:
+        for i in range(MAX_FAILS):
+            _get(port, "/api/state", {"X-Forwarded-For": f"100.64.0.{i}"})  # tries to look like many devices
+        assert _get(port, "/api/state", {"X-Forwarded-For": "100.64.0.200", **BEARER}) == 429
+    finally:
+        server.close()
+
+
+def test_cookie_is_secure_only_over_https(cfg):
+    server = _serve(cfg, **runner.PROXY_TRUST)
+    port = server.effective_port
+    try:
+        def login(headers):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            conn.request("POST", "/api/login", body=json.dumps({"token": TOKEN}),
+                         headers={"Content-Type": "application/json", **headers})
+            resp = conn.getresponse()
+            resp.read()
+            cookie = resp.getheader("Set-Cookie", "")
+            conn.close()
+            return cookie
+
+        assert "Secure" in login({"X-Forwarded-Proto": "https", "X-Forwarded-For": "100.64.0.5"})
+        assert "Secure" not in login({"X-Forwarded-For": "100.64.0.5"})
+    finally:
+        server.close()

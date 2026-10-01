@@ -3,21 +3,43 @@ import { useInstall } from "./useInstall";
 const PLAY = "https://play.google.com/store/apps/details?id=com.tailscale.ipn";
 const APPLE = "https://apps.apple.com/app/tailscale/id1470499037";
 
-/** Plain-language setup and install help, used on the login screen and in settings. */
+/** Plain-language help, used on the sign-in screen (full) and in Settings (compact). */
 export default function Help({ compact = false }: { compact?: boolean }) {
   const inst = useInstall();
   return (
     <div className="help">
       {!compact && (
         <>
-          <h3>First time here?</h3>
+          <h3>How do I sign in?</h3>
+          <p className="muted">
+            This phone shows your <strong>PC's screen</strong>, so the sign-in code lives on the PC:
+          </p>
           <ol>
-            <li>On your PC, run <code>samantha-mirror link</code>. It shows a QR code: scan it and you are signed in.</li>
             <li>
-              This phone needs the free <strong>Tailscale</strong> app, signed in to the same account as the PC and switched on:{" "}
-              <a href={PLAY} target="_blank" rel="noreferrer">Android</a> · <a href={APPLE} target="_blank" rel="noreferrer">iPhone</a>
+              <strong>On your PC</strong>, double-click <strong>samantha-mirror.exe</strong> (the program you installed).
+              A window opens and shows a <strong>QR code</strong>.
+              <br />
+              <span className="muted small">
+                Installed with the PowerShell script instead? Open PowerShell in the project folder and run{" "}
+                <code>.\.venv\Scripts\samantha-mirror link</code>
+              </span>
+            </li>
+            <li>
+              <strong>On this phone</strong>, open the camera and point it at the QR code on the PC screen. Tap the link
+              that appears. You are signed in. (No camera? Type the token from the <code>.env</code> file instead.)
             </li>
           </ol>
+
+          <h3>"Can't reach your PC"?</h3>
+          <ul>
+            <li>
+              This phone needs the free <strong>Tailscale</strong> app, <strong>signed in to the same account as the PC</strong>
+              {" "}and switched <strong>on</strong>:{" "}
+              <a href={PLAY} target="_blank" rel="noreferrer">Android</a> · <a href={APPLE} target="_blank" rel="noreferrer">iPhone</a>
+            </li>
+            <li>The PC must be switched on, awake and signed in to Windows (not asleep or at the lock screen).</li>
+            <li>Still stuck? On the PC run <code>samantha-mirror doctor</code>. It checks everything and tells you the fix.</li>
+          </ul>
         </>
       )}
       <h3>Install as an app</h3>
@@ -26,12 +48,12 @@ export default function Help({ compact = false }: { compact?: boolean }) {
       ) : inst.canPrompt ? (
         <button className="primary" onClick={inst.install}>Install app</button>
       ) : inst.ios ? (
-        <p className="muted">Tap the Share button in Safari, then <strong>Add to Home Screen</strong>.</p>
+        <p className="muted">In Safari, tap the Share button, then <strong>Add to Home Screen</strong>.</p>
       ) : !inst.secure ? (
         <p className="muted">
-          Your browser only offers a full install over HTTPS. Open this app through your PC's
-          <code> https://…ts.net </code> address (run <code>samantha-mirror setup</code> on the PC to set it up).
-          You can still use the browser menu → <strong>Add to Home screen</strong>.
+          Your browser only offers a full install over HTTPS. On the PC, run <code>samantha-mirror setup</code> and say yes
+          to HTTPS, then open the PC's <code>https://…ts.net</code> address on this phone. Until then you can still use the
+          browser menu → <strong>Add to Home screen</strong>.
         </p>
       ) : (
         <p className="muted">Use the browser menu → <strong>Install app</strong> or <strong>Add to Home screen</strong>.</p>

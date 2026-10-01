@@ -15,7 +15,10 @@ export default function Login({ onDone }: { onDone: () => void }) {
       await api.login(token.trim());
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not connect");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.startsWith("429")) setError("Too many wrong tries from this phone. Wait 5 minutes, then scan the QR code on your PC.");
+      else if (msg === "Wrong token") setError("That token isn't right. Easiest fix: scan the QR code on your PC with this phone's camera.");
+      else setError("Can't reach your PC. Check that Tailscale is switched on in this phone (see Need help? below).");
     } finally {
       setBusy(false);
     }
@@ -25,7 +28,10 @@ export default function Login({ onDone }: { onDone: () => void }) {
     <form className="login" onSubmit={submit}>
       <img src="/icon-192.png" alt="" width={72} height={72} />
       <h1>Samantha Screen Mirror</h1>
-      <p className="muted">Enter the access token from your PC's <code>.env</code> file (<code>SM_TOKEN</code>). You only need to do this once per device.</p>
+      <p className="muted">
+        See your PC's screen on this phone. <strong>Easiest:</strong> scan the QR code shown by Samantha Screen Mirror on
+        your PC. Or paste the access token below. You only sign in once per device.
+      </p>
       <input
         type="password" autoComplete="current-password" placeholder="Access token"
         value={token} onChange={(e) => setToken(e.target.value)} autoFocus
@@ -35,7 +41,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
         {busy ? "Connecting…" : "Connect"}
       </button>
       <details className="more">
-        <summary>Need help?</summary>
+        <summary>Need help? Where do I find the QR code?</summary>
         <Help />
       </details>
     </form>

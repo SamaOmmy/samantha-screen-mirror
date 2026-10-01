@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, Unauthorized, type ServerState } from "./api";
+import { api, ServerDown, Unauthorized, type ServerState } from "./api";
+
+/** Why the PC cannot be used: "network" = not reachable at all, "server" = reachable but the app is not running. */
+export type Unreachable = "network" | "server" | null;
 
 export type Status = "connecting" | "live" | "retrying" | "capture-error";
 
@@ -12,7 +15,7 @@ export function useStream(onUnauthorized: () => void) {
   const [status, setStatus] = useState<Status>("connecting");
   const [server, setServer] = useState<ServerState | null>(null);
   const [fps, setFps] = useState(0);
-  const [unreachable, setUnreachable] = useState(false);
+  const [unreachable, setUnreachable] = useState<Unreachable>(null);
 
   const backoff = useRef(500);
   const retryTimer = useRef<number>(0);
@@ -48,7 +51,7 @@ export function useStream(onUnauthorized: () => void) {
       try {
         const s = await api.state();
         if (stopped) return;
-        setUnreachable(false);
+        setUnreachable(null);
         setServer(s);
         const l = last.current;
         const now = performance.now();
@@ -65,7 +68,7 @@ export function useStream(onUnauthorized: () => void) {
         l.tick = s.tick; l.seq = s.seq; l.at = now;
       } catch (e) {
         if (e instanceof Unauthorized) unauthorized.current();
-        else if (!stopped) { setUnreachable(true); retry(); }
+        else if (!stopped) { setUnreachable(e instanceof ServerDown ? "server" : "network"); retry(); }
       }
     };
 

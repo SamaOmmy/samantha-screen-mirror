@@ -75,7 +75,8 @@ def phone_instructions(url: str, https: bool) -> None:
     say(f"       Android: {tailscale.PLAY_STORE_URL}")
     say(f"       iPhone:  {tailscale.APP_STORE_URL}")
     say("  2. Make sure Tailscale is switched on in the phone.")
-    say("  3. Scan the QR code above with the camera (or open the link). It signs you in.")
+    say("  3. Point the phone camera at the QR code above (it is on THIS computer screen) and tap the link.")
+    say("     It signs you in. No camera? Open the link, or type the token from your settings file.")
     if https:
         say("  4. Install it as an app: browser menu > Install app (Android), or Share > Add to Home Screen (iPhone).")
     else:
@@ -105,6 +106,7 @@ def show_link() -> int:
     say(render(url))
     say(f"\n{url}")
     say("\nAnyone with this link can see your screen. Don't share or post it.")
+    say(f"Your token (the part after token=) is saved in: {config.env_path()}")
     phone_instructions(url, https)
     return 0
 

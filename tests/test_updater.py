@@ -1,0 +1,166 @@
+import hashlib
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from samantha_mirror import __version__, updater
+
+GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+
+
+@pytest.mark.parametrize("latest,current,newer", [
+    ("0.3.1", "0.3.0", True), ("v0.4.0", "0.3.9", True), ("1.0", "0.9.9", True),
+    ("0.3.0", "0.3.0", False), ("0.2.9", "0.3.0", False), ("v0.10.0", "0.9.0", True),
+])
+def test_version_comparison(latest, current, newer):
+    assert updater.is_newer(latest, current) is newer
+
+
+def test_garbage_version_is_rejected():
+    with pytest.raises(ValueError):
+        updater.parse_version("latest")
+
+
+def api_json(tag="v9.9.9", zip_url=None, sha_url=None):
+    prefix = updater.DOWNLOAD_PREFIX + tag + "/"
+    return json.dumps({
+        "tag_name": tag, "html_url": "https://github.com/x/y/releases/tag/" + tag, "body": "notes",
+        "assets": [
+            {"name": updater.ZIP_NAME, "browser_download_url": zip_url or prefix + updater.ZIP_NAME},
+            {"name": updater.SUM_NAME, "browser_download_url": sha_url or prefix + updater.SUM_NAME},
+        ]}).encode()
+
+
+def test_latest_release_is_parsed(monkeypatch):
+    monkeypatch.setattr(updater, "_get", lambda url, **kw: api_json())
+    rel = updater.latest_release()
+    assert (rel.tag, rel.version) == ("v9.9.9", "9.9.9")
+    assert rel.zip_url.endswith(updater.ZIP_NAME) and rel.sha_url.endswith(updater.SUM_NAME)
+    assert updater.available() == rel
+
+
+def test_up_to_date_means_no_update(monkeypatch):
+    monkeypatch.setattr(updater, "_get", lambda url, **kw: api_json(tag="v" + __version__))
+    assert updater.available() is None
+
+
+def test_downloads_must_come_from_the_projects_release_page(monkeypatch):
+    evil = "https://evil.example.com/SamanthaScreenMirror-windows.zip"
+    monkeypatch.setattr(updater, "_get", lambda url, **kw: api_json(zip_url=evil))
+    with pytest.raises(updater.UpdateError, match="refusing"):
+        updater.latest_release()
+
+
+def test_nonsense_from_github_is_an_update_error(monkeypatch):
+    monkeypatch.setattr(updater, "_get", lambda url, **kw: b"<html>rate limited</html>")
+    with pytest.raises(updater.UpdateError):
+        updater.latest_release()
+
+
+def test_app_only_shows_an_update_when_one_is_newer(monkeypatch):
+    rel = updater.Release("v9.9.9", "9.9.9", "https://example.com", "", None, None)
+    monkeypatch.setattr(updater, "_latest", rel)
+    assert updater.cached_info() == {"latest": "9.9.9", "url": "https://example.com"}
+    monkeypatch.setattr(updater, "_latest", updater.Release("v0.0.1", "0.0.1", "u", "", None, None))
+    assert updater.cached_info() is None
+    monkeypatch.setattr(updater, "_latest", None)
+    assert updater.cached_info() is None
+
+
+def test_state_endpoint_carries_the_update_notice(client, monkeypatch):
+    from tests.conftest import TOKEN
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    assert client.get("/api/state", headers=headers).get_json()["update"] is None
+    monkeypatch.setattr(updater, "_latest", updater.Release("v9.9.9", "9.9.9", "u", "", None, None))
+    assert client.get("/api/state", headers=headers).get_json()["update"]["latest"] == "9.9.9"
+
+
+def test_checksum_is_enforced(tmp_path):
+    f = tmp_path / "x.zip"
+    f.write_bytes(b"hello")
+    good = hashlib.sha256(b"hello").hexdigest()
+    updater.verify_sha256(f, f"{good}  x.zip\n")  # no exception
+    for bad in (hashlib.sha256(b"other").hexdigest() + "  x.zip", "", "not-a-hash  x.zip"):
+        with pytest.raises(updater.UpdateError, match="checksum"):
+            updater.verify_sha256(f, bad)
+
+
+# -- real git updates on temporary repositories ----------------------------------------------
+def git(cwd, *args):
+    import os
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, env={**os.environ, **GIT_ENV})
+
+
+@pytest.fixture
+def repos(tmp_path):
+    origin, clone = tmp_path / "origin", tmp_path / "clone"
+    origin.mkdir()
+    git(origin, "init", "-q", "-b", "main")
+    (origin / "app.txt").write_text("v1")
+    git(origin, "add", ".")
+    git(origin, "commit", "-q", "-m", "one")
+    git(origin, "tag", "v0.3.0")
+    git(tmp_path, "clone", "-q", str(origin), str(clone))
+    (origin / "app.txt").write_text("v2")
+    git(origin, "commit", "-q", "-am", "two")
+    git(origin, "tag", "v0.3.1")
+    return origin, clone
+
+
+def release(tag):
+    return updater.Release(tag, tag.lstrip("v"), "u", "", None, None)
+
+
+def test_git_update_fast_forwards_to_the_release_tag(repos):
+    _, clone = repos
+    assert (clone / "app.txt").read_text() == "v1"
+    updater.update_git(release("v0.3.1"), root=clone, reinstall=False)
+    assert (clone / "app.txt").read_text() == "v2"
+
+
+def test_git_update_refuses_to_touch_local_changes(repos):
+    _, clone = repos
+    (clone / "app.txt").write_text("my edit")
+    with pytest.raises(updater.UpdateError, match="local changes"):
+        updater.update_git(release("v0.3.1"), root=clone, reinstall=False)
+    assert (clone / "app.txt").read_text() == "my edit"
+
+
+# -- swapping the .exe folder ----------------------------------------------------------------
+pytestmark_ps = pytest.mark.skipif(shutil.which("powershell") is None, reason="needs Windows PowerShell")
+
+
+def run_swap(tmp_path: Path, new_exists: bool):
+    install = tmp_path / "SamanthaScreenMirror"
+    new = tmp_path / "SamanthaScreenMirror.update"
+    install.mkdir()
+    (install / "old.txt").write_text("old")
+    if new_exists:
+        new.mkdir()
+        (new / "new.txt").write_text("new")
+    log = tmp_path / "update.log"
+    script = tmp_path / "swap.ps1"
+    # A task name that does not exist and a process id that has already exited: both are harmless no-ops.
+    script.write_text(updater.swap_script(install, new, "NoSuchTask-SamanthaTest", 999999, log), encoding="utf-8")
+    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                   check=True, capture_output=True, timeout=120)
+    return install, log
+
+
+@pytestmark_ps
+def test_swap_replaces_the_folder(tmp_path):
+    install, log = run_swap(tmp_path, new_exists=True)
+    assert (install / "new.txt").exists() and not (install / "old.txt").exists()
+    assert not (tmp_path / "SamanthaScreenMirror.old").exists()
+    assert "updated" in log.read_text()
+
+
+@pytestmark_ps
+def test_a_failed_swap_puts_the_old_version_back(tmp_path):
+    install, log = run_swap(tmp_path, new_exists=False)  # the staged folder is missing: the swap must fail
+    assert (install / "old.txt").exists()
+    assert "FAILED" in log.read_text()

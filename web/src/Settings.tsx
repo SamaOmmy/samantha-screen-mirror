@@ -82,6 +82,13 @@ export default function Settings({ onClose, onSignOut, current, server }: Props)
           </>
         )}
         <Devices />
+        {server?.update && (
+          <p className="update-note">
+            <strong>Update available: v{server.update.latest}.</strong> On your PC, run{" "}
+            <code>samantha-mirror update</code> (or open the app there and choose Update).{" "}
+            <a href={server.update.url} target="_blank" rel="noreferrer">What's new</a>
+          </p>
+        )}
         <Help compact />
         <p className="muted small about">
           Samantha Screen Mirror {server?.version ? `v${server.version}` : ""}

@@ -3,6 +3,22 @@
 See your Windows PC screen live on your phone, from anywhere, privately. No accounts, no cloud, no port forwarding:
 the picture goes straight from your PC to your phone through your own [Tailscale](https://tailscale.com) network.
 
+## What is this for?
+
+Samantha Screen Mirror lets you **look at your Windows PC's screen from your phone, wherever you are**. Typical uses:
+
+- Check on a **long download, render, export, backup or install** without walking back to the desk
+- Keep an eye on a **home or work PC** that is running something while you are out
+- **Read something** on the big screen from the couch or another room (zoom in with two fingers)
+- Quickly grab a **screenshot** of what the PC is showing
+
+What it is **not**: it does not let you click or type on the PC (it is view-only on purpose, which makes it much
+safer), it is not for sharing your screen with other people, and it is not a cloud service. Your screen goes
+straight from your PC to your own phone through [Tailscale](https://tailscale.com), a free private network, and
+nobody else (including this project) can see it.
+
+## Features
+
 - **Installable app** (PWA) with pinch-zoom, screenshots, quality presets and a screen picker
 - **Fast**: about 29 fps at 1440x810 and about 14 ms capture-to-send delay in testing (GPU capture)
 - **Private**: only reachable inside your tailnet, protected by a secret token, **view-only**
@@ -49,12 +65,19 @@ The phone needs **no download from us**: it uses the free Tailscale app plus thi
 
 From then on, just open the app on your phone. The server starts by itself when you log in to Windows.
 
-Lost the QR code? Run `samantha-mirror link` on the PC (see below).
+**Lost the QR code, or signing in another phone?** On the **PC**: double-click `samantha-mirror.exe` again (Option A),
+or in PowerShell run `.\.venv\Scripts\samantha-mirror link` from the project folder (Option B). It shows the QR code
+again. Then scan it with the phone camera.
 
 ## Commands
 
-Run these in the project folder with the virtual environment, e.g. `.\.venv\Scripts\samantha-mirror.exe link`
-(or activate it first with `.\.venv\Scripts\Activate.ps1`).
+All of these run **on the PC** (never on the phone). Open PowerShell (press the Windows key, type `PowerShell`, press
+Enter), go to the program's folder, then:
+
+- Option A (downloaded zip): `.\samantha-mirror.exe <command>`
+- Option B (from source): `.\.venv\Scripts\samantha-mirror <command>`
+
+For example `.\samantha-mirror.exe doctor`. Below, `samantha-mirror` stands for whichever of those you use.
 
 | Command | What it does |
 |---|---|
@@ -63,6 +86,7 @@ Run these in the project folder with the virtual environment, e.g. `.\.venv\Scri
 | `samantha-mirror doctor` | Check everything and say how to fix problems |
 | `samantha-mirror run` | Start the server in this window (Ctrl+C stops it) |
 | `samantha-mirror autostart install/remove/status` | Start hidden at every Windows logon |
+| `samantha-mirror update` | Check for and install a new version |
 | `samantha-mirror uninstall` | Remove autostart and the HTTPS setup (keeps your settings) |
 
 ## How it works
@@ -113,9 +137,24 @@ set `SM_HOME` to use another folder). Defaults are shown below; you rarely need 
 | `SM_MAX_CLIENTS` | 3 | Max simultaneous viewers |
 | `SM_CURSOR` | 1 | Draw the mouse pointer on the stream |
 | `SM_CAPTURE` | auto | `auto` (DXGI, falls back to mss), `dxgi`, or `mss` |
+| `SM_UPDATE_CHECK` | 1 | Look for new releases on GitHub every 12 hours (only contacts api.github.com) |
 | `SM_LOOPBACK` | 0 | Also listen on 127.0.0.1 (set by `setup` when you enable HTTPS) |
 
 The app's Settings sheet changes fps / quality / size / screen live (shared by all viewers; reset on restart).
+
+## Updating
+
+When a new version is released, the app shows **Update available** in Settings. On the PC:
+
+```powershell
+samantha-mirror update          # asks first; add -y to skip the question, --check to only look
+```
+
+It works for both install types: a git install fast-forwards to the new release and refreshes its packages; the
+.exe download is fetched from the Releases page, verified against its SHA-256 checksum, and swapped in (your
+settings and token are kept; a failed swap restores the old version). The server restarts by itself. Double-clicking
+`samantha-mirror.exe` also offers the update. The PC checks GitHub every 12 hours; `SM_UPDATE_CHECK=0` turns that
+off. Updates are only ever started on the PC, never from the phone.
 
 ## Troubleshooting
 
@@ -123,6 +162,9 @@ Start with `samantha-mirror doctor`. Common causes:
 
 - **Phone says "Can't reach your PC"**: Tailscale is off on the phone, or the PC is asleep / not signed in to Windows.
   Set Windows to never sleep while plugged in (Settings > System > Power).
+- **"Your PC is reachable, but the mirror isn't running"**: the server isn't up. It starts at logon and retries by
+  itself (and the start-at-logon task re-checks every 5 minutes), so wait a minute after a restart. If it
+  persists, run `samantha-mirror doctor` and look at `samantha-mirror.log` in your settings folder.
 - **"PC screen unavailable"**: the PC is locked or showing a secure prompt (UAC). It recovers when you unlock.
 - **No "Install app" option**: you opened the plain `http://100.x...` address. Run `samantha-mirror setup`, enable
   HTTPS in your Tailscale admin console if asked, and use the `https://...ts.net` address.
@@ -155,7 +197,7 @@ samantha_mirror/
   cli.py        commands          wizard.py   guided setup + QR
   runner.py     start the server  doctor.py   health checks
   server.py     Flask routes      tailscale.py  find the address, HTTPS via tailscale serve
-  capture.py    screen -> JPEG    autostart.py  Task Scheduler
+  capture.py    screen -> JPEG    autostart.py  Task Scheduler   updater.py   check/install releases
   auth.py       token + lockout   config.py     settings
   web/          built web app (from web/)
 web/            React + TypeScript source

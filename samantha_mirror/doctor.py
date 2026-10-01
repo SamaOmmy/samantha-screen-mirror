@@ -3,7 +3,7 @@ import platform
 import sys
 import urllib.request
 
-from . import autostart, config, tailscale
+from . import __version__, autostart, config, tailscale, updater
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 MARK = {OK: "[ ok ]", WARN: "[warn]", FAIL: "[FAIL]"}
@@ -92,6 +92,15 @@ def run() -> int:
     state = autostart.status()
     _check(r, OK if state != "missing" else WARN, "Starts automatically at logon", state,
            "Optional: `samantha-mirror autostart install`")
+
+    try:
+        newer = updater.available()
+        if newer:
+            _check(r, WARN, "Up to date", f"v{__version__}, newer v{newer.version} is available", "Run `samantha-mirror update`")
+        else:
+            _check(r, OK, "Up to date", f"v{__version__}")
+    except updater.UpdateError:
+        _check(r, OK, "Up to date", f"v{__version__} (could not check for newer versions)")
 
     width = max(len(name) for _, name, _, _ in r)
     for level, name, detail, fix in r:

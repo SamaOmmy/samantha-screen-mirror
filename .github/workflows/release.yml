@@ -18,18 +18,28 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e . pyinstaller
+      - name: Tag matches the version in the code
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python -c "import samantha_mirror, sys; sys.exit(0 if 'v' + samantha_mirror.__version__ == '${{ github.ref_name }}' else 'tag ${{ github.ref_name }} != version ' + samantha_mirror.__version__)"
       - run: pyinstaller packaging/samantha.spec --noconfirm --distpath dist --workpath build
       - name: Package
         shell: pwsh
         run: |
           Copy-Item packaging/README-FIRST.txt dist/SamanthaScreenMirror/
           Compress-Archive -Path dist/SamanthaScreenMirror -DestinationPath SamanthaScreenMirror-windows.zip
+          # `samantha-mirror update` verifies this before installing the download
+          $hash = (Get-FileHash SamanthaScreenMirror-windows.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  SamanthaScreenMirror-windows.zip" | Set-Content -Encoding ascii SamanthaScreenMirror-windows.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: SamanthaScreenMirror-windows
-          path: SamanthaScreenMirror-windows.zip
+          path: |
+            SamanthaScreenMirror-windows.zip
+            SamanthaScreenMirror-windows.zip.sha256
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: SamanthaScreenMirror-windows.zip
+          files: |
+            SamanthaScreenMirror-windows.zip
+            SamanthaScreenMirror-windows.zip.sha256
           generate_release_notes: true

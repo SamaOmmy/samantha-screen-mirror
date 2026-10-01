@@ -60,12 +60,21 @@ export default function Viewer({ onSignedOut }: { onSignedOut: () => void }) {
             style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})` }}
           />
         )}
-        {unreachable && (
+        {unreachable === "network" && (
           <div className="overlay">
             <strong>Can't reach your PC.</strong>
             <span className="muted">
-              Check that Tailscale is switched on in this phone, and that the PC is on, awake and signed in.
+              Check that Tailscale is switched on in this phone, and that the PC is on and awake.
               Retrying automatically.
+            </span>
+          </div>
+        )}
+        {unreachable === "server" && (
+          <div className="overlay">
+            <strong>Your PC is reachable, but the mirror isn't running on it.</strong>
+            <span className="muted">
+              It starts by itself when the PC signs in to Windows, so give it a minute after a restart.
+              If it stays like this, run <code>samantha-mirror doctor</code> on the PC. Retrying automatically.
             </span>
           </div>
         )}
@@ -87,7 +96,7 @@ export default function Viewer({ onSignedOut }: { onSignedOut: () => void }) {
       </header>
 
       <footer className={`bar bottom ${barVisible ? "" : "hidden"}`}>
-        <button onClick={() => setShowSettings(true)}>Settings</button>
+        <button onClick={() => setShowSettings(true)}>Settings{server?.update && <span className="badge" title="Update available" />}</button>
         <a className="btn" href="/api/screenshot" download="screenshot.png">Screenshot</a>
         <button onClick={reconnect}>Reconnect</button>
         <button onClick={toggleFullscreen}>{fullscreen ? "Exit full" : "Fullscreen"}</button>

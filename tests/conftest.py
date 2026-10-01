@@ -25,6 +25,6 @@ def cfg(home, monkeypatch):
 @pytest.fixture
 def client(cfg):
     from samantha_mirror.server import create_app
-    app = create_app(cfg, "100.64.0.1")
+    app = create_app(cfg)
     app.testing = True
     return app.test_client()

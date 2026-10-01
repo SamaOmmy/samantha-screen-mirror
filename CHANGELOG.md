@@ -1,6 +1,27 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.1
+
+Fixes
+- **Server not running after a PC restart** (the phone said it could not reach the PC). At logon Tailscale can know
+  its address before Windows has attached it to the network adapter; the server gave up instead of waiting.
+  It now retries for up to 10 minutes, and a watchdog rebuilds the listener if it ever stops answering
+  (for example after a Tailscale restart or update).
+- The start-at-logon task now also checks every 5 minutes and starts the server if it is not running.
+- Over HTTPS, one device's wrong tries could lock out every device, and the login cookie was not marked `Secure`
+  (waitress discards `X-Forwarded-*` headers unless the proxy is trusted).
+- The app now says *why* it cannot connect: "can't reach your PC" (Tailscale or network) versus "your PC is
+  reachable but the mirror isn't running".
+
+New
+- `samantha-mirror update` (and `--check`): installs new releases from GitHub, for both the git install and the
+  .exe download (checksum-verified, with rollback). The .exe asks on double-click when an update exists.
+- The app shows "Update available" in Settings. The PC checks GitHub every 12 hours (`SM_UPDATE_CHECK=0` turns it off).
+  Updating is started on the PC only, never from the phone.
+- The app reloads itself once after an update installs a new version.
+- `doctor` shows whether you are up to date.
+
+## 0.3.0
 
 - Renamed to **Samantha Screen Mirror**; Python package is now `samantha_mirror`, command is `samantha-mirror`.
 - New command line: `setup` (guided first run), `link` (QR code + phone steps), `doctor` (health check),

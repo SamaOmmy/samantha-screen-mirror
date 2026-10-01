@@ -37,10 +37,14 @@ def install(start_now: bool = True) -> None:
     program, arguments = _command()
     script = f"""
 $a = New-ScheduledTaskAction -Execute '{program}' -Argument '{arguments}'
-$t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+$logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+# A separate time-based trigger (a repeat attached to the logon trigger only begins after the next logon):
+# every 5 minutes, start the server if it is not running. MultipleInstances IgnoreNew makes it a no-op otherwise.
+$repeat = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5) `
+            -RepetitionDuration (New-TimeSpan -Days 3650)
+$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew `
        -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName '{TASK}' -Action $a -Trigger $t -Settings $s -Force `
+Register-ScheduledTask -TaskName '{TASK}' -Action $a -Trigger @($logon, $repeat) -Settings $s -Force `
   -Description 'Mirror this PC screen to your phone over Tailscale' | Out-Null
 """
     if start_now:
