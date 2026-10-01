@@ -48,5 +48,9 @@ Write-Host "Installing (this can take a minute)..."
 & .\.venv\Scripts\python.exe -m pip install --quiet -e .
 if ($LASTEXITCODE -ne 0) { Write-Host "Install failed."; exit 1 }
 
-$extra = if ($Yes) { @("--yes") } else { @() }
-& .\.venv\Scripts\python.exe -m samantha_mirror setup @extra
+if ($Yes) {
+  & .\.venv\Scripts\python.exe -m samantha_mirror setup --yes
+} else {
+  & .\.venv\Scripts\python.exe -m samantha_mirror setup
+}
+exit $LASTEXITCODE
