@@ -87,7 +87,7 @@ SM_TARGET=http://<tailscale-ip>:8787 npm run dev   # live reload, proxies /api a
 
 Fps, quality, scale, screen and pointer can also be changed live from the app (shared by all viewers, reset on restart); `.env` holds the startup defaults.
 
-Measured on a 1080p screen over Tailscale with constant motion: **Data saver** (15 fps, 0.5 scale) about 0.5 MB/s; **Balanced** (the defaults, 1440x810) about 22 fps and 1.8 MB/s; **Sharp** (full 1080p, quality 85) about 29 fps and 6 MB/s. The app's Settings sheet switches between them. Frames are only sent when something on screen changed, so a static screen costs almost nothing.
+Measured on a 1080p screen over Tailscale with constant motion: **Data saver** (15 fps, 0.5 scale) about 0.5 MB/s; **Balanced** (the defaults, 1440x810) about 29 fps and 3 MB/s; **Sharp** (full 1080p) about 28 fps and 5 MB/s. Delay from a change on the PC to the frame reaching the phone side is about 15 ms (median) on top of your network's latency. The app's Settings sheet switches between presets. Frames are only sent when something on screen changed, so a static screen costs almost nothing.
 
 ## Notes
 

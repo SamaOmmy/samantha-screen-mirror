@@ -18,9 +18,16 @@ from ctypes import wintypes
 import mss
 from PIL import Image, ImageDraw
 
+try:  # optional: several times faster than Pillow at resizing and encoding
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+
 log = logging.getLogger("screen-mirror")
 
 RETRY_DELAY = 1.0   # seconds to wait after a capture error before trying again
+IDLE_POLL = 0.002   # seconds between checks while the screen isn't changing
 DX_FAIL_LIMIT = 3   # runtime DXGI failures in a row before we stick to mss
 
 
@@ -175,10 +182,10 @@ class FrameSource:
         monitor = None
         last_key = None
         frame_id = 0
+        last_sent = 0.0
         try:
             while True:
                 try:
-                    started = time.monotonic()
                     with self._cond:
                         # Decide to stop and clear _thread in one step, so a viewer
                         # arriving right now always starts a fresh thread.
@@ -196,6 +203,12 @@ class FrameSource:
                         with self._cond:
                             self._grabber_name = grabber.name
 
+                    # Hold the fps cap by waiting *before* grabbing, so the picture we send
+                    # is as fresh as possible, then poll quickly while nothing changes.
+                    wait = last_sent + 1.0 / s["fps"] - time.monotonic()
+                    if wait > 0:
+                        time.sleep(wait)
+                    grabbed_at = time.monotonic()
                     buf, size, changed = grabber.grab()
                     dx_failures = 0
                     frame_id += changed
@@ -213,9 +226,10 @@ class FrameSource:
                             self._frame, self._size = jpeg, out_size
                             self._seq += 1
                         self._cond.notify_all()
-                    delay = 1.0 / s["fps"] - (time.monotonic() - started)
-                    if delay > 0:
-                        time.sleep(delay)
+                    if jpeg is not None:
+                        last_sent = grabbed_at  # pace from the grab, so encode time doesn't add to the interval
+                    else:
+                        time.sleep(IDLE_POLL)
                 except Exception as exc:  # e.g. locked screen, UAC prompt, display change
                     log.warning("capture error: %s", exc)
                     if grabber is not None:
@@ -244,7 +258,41 @@ class FrameSource:
                     pass
 
     @staticmethod
-    def _encode(size, buf, s, region, cursor_pos):
+    def _arrow(x, y, width):
+        k = max(0.6, min(1.5, width / 1000)) * 12
+        return [(x, y), (x, y + 1.5 * k), (x + 0.4 * k, y + 1.15 * k), (x + 0.75 * k, y + 1.7 * k),
+                (x + 1.0 * k, y + 1.55 * k), (x + 0.65 * k, y + 1.0 * k), (x + 1.05 * k, y + 1.0 * k)]
+
+    @classmethod
+    def _encode(cls, size, buf, s, region, cursor_pos):
+        if cv2 is not None:
+            return cls._encode_cv2(size, buf, s, region, cursor_pos)
+        return cls._encode_pil(size, buf, s, region, cursor_pos)
+
+    @classmethod
+    def _encode_cv2(cls, size, buf, s, region, cursor_pos):
+        scale = s["scale"]
+        img = np.frombuffer(buf, dtype=np.uint8).reshape(size[1], size[0], 4) if isinstance(buf, (bytes, bytearray)) else buf
+        if scale < 1.0:
+            target = (max(1, int(size[0] * scale)), max(1, int(size[1] * scale)))
+            # AREA keeps text crisp when shrinking a lot; LINEAR is cheaper for mild shrinking.
+            img = cv2.resize(img, target, interpolation=cv2.INTER_AREA if scale <= 0.6 else cv2.INTER_LINEAR)
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # also gives a writable copy
+        h, w = img.shape[:2]
+        if cursor_pos:
+            x = (cursor_pos[0] - region["left"]) * scale
+            y = (cursor_pos[1] - region["top"]) * scale
+            if 0 <= x < w and 0 <= y < h:
+                pts = np.array(cls._arrow(x, y, w), dtype=np.float32).round().astype(np.int32)
+                cv2.fillPoly(img, [pts], (255, 255, 255), cv2.LINE_AA)
+                cv2.polylines(img, [pts], True, (0, 0, 0), 1, cv2.LINE_AA)
+        ok, out = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, s["quality"]])
+        if not ok:
+            raise RuntimeError("JPEG encoding failed")
+        return out.tobytes(), (w, h)
+
+    @classmethod
+    def _encode_pil(cls, size, buf, s, region, cursor_pos):
         img = Image.frombuffer("RGB", size, buf, "raw", "BGRX", 0, 1)
         scale = s["scale"]
         if scale < 1.0:
@@ -258,10 +306,7 @@ class FrameSource:
             x = (cursor_pos[0] - region["left"]) * scale
             y = (cursor_pos[1] - region["top"]) * scale
             if 0 <= x < img.width and 0 <= y < img.height:
-                k = max(0.6, min(1.5, img.width / 1000)) * 12
-                arrow = [(x, y), (x, y + 1.5 * k), (x + 0.4 * k, y + 1.15 * k), (x + 0.75 * k, y + 1.7 * k),
-                         (x + 1.0 * k, y + 1.55 * k), (x + 0.65 * k, y + 1.0 * k), (x + 1.05 * k, y + 1.0 * k)]
-                ImageDraw.Draw(img).polygon(arrow, fill=(255, 255, 255), outline=(0, 0, 0))
+                ImageDraw.Draw(img).polygon(cls._arrow(x, y, img.width), fill=(255, 255, 255), outline=(0, 0, 0))
         out = io.BytesIO()
         img.save(out, "JPEG", quality=s["quality"])
         return out.getvalue(), img.size
