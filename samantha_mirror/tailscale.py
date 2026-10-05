@@ -9,6 +9,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from . import proc
+
 # Tailscale assigns addresses from the CGNAT range 100.64.0.0/10.
 TAILSCALE_NET = ipaddress.ip_network("100.64.0.0/10")
 _WINDOWS_DEFAULT = Path(r"C:\Program Files\Tailscale\tailscale.exe")
@@ -40,7 +42,7 @@ def _cli() -> str:
 
 
 def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess:
-    return subprocess.run([_cli(), *args], capture_output=True, text=True, timeout=timeout)
+    return proc.run([_cli(), *args], capture_output=True, text=True, timeout=timeout)
 
 
 def status() -> dict:

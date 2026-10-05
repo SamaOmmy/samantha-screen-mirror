@@ -18,7 +18,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, autostart, config
+from . import __version__, autostart, config, proc
 
 REPO = "SamaOmmy/samantha-screen-mirror"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -136,7 +136,7 @@ def install_mode() -> str:
 
 
 def _git(root: Path, *args: str) -> str:
-    out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=120)
+    out = proc.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         raise UpdateError(f"git {' '.join(args)} failed: {(out.stderr or out.stdout).strip()}")
     return out.stdout
@@ -150,7 +150,7 @@ def update_git(release: Release, root: Path | None = None, reinstall: bool = Tru
     _git(root, "fetch", "--tags", "--quiet", "origin")
     _git(root, "merge", "--ff-only", release.tag)
     if reinstall:  # dependencies may have changed
-        out = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "-e", str(root)],
+        out = proc.run([sys.executable, "-m", "pip", "install", "--quiet", "-e", str(root)],
                              capture_output=True, text=True, timeout=900)
         if out.returncode != 0:
             raise UpdateError(f"Installing dependencies failed: {(out.stderr or out.stdout).strip()[-400:]}")
@@ -225,7 +225,7 @@ def update_exe(release: Release) -> None:
         verify_sha256(zip_path, _get(release.sha_url).decode("utf-8", "replace"))
         print("  Checksum OK. Unpacking...")
         if staging.exists():
-            subprocess.run(["powershell", "-NoProfile", "-Command", f"Remove-Item -LiteralPath '{staging}' -Recurse -Force"],
+            proc.run(["powershell", "-NoProfile", "-Command", f"Remove-Item -LiteralPath '{staging}' -Recurse -Force"],
                            check=False, capture_output=True)
         try:
             with zipfile.ZipFile(zip_path) as archive:
@@ -236,22 +236,22 @@ def update_exe(release: Release) -> None:
         if not (unpacked / "samantha-mirror.exe").exists():
             raise UpdateError("The download does not look like Samantha Screen Mirror.")
         try:
-            subprocess.run(["powershell", "-NoProfile", "-Command",
+            proc.run(["powershell", "-NoProfile", "-Command",
                             f"Move-Item -LiteralPath '{unpacked}' -Destination '{staging}'"],
                            check=True, capture_output=True)
         except subprocess.CalledProcessError as exc:
             raise UpdateError(f"Could not write next to the current install ({staging}): "
                               f"{exc.stderr.decode(errors='replace').strip()}") from exc
     finally:
-        subprocess.run(["powershell", "-NoProfile", "-Command", f"Remove-Item -LiteralPath '{work}' -Recurse -Force"],
+        proc.run(["powershell", "-NoProfile", "-Command", f"Remove-Item -LiteralPath '{work}' -Recurse -Force"],
                        check=False, capture_output=True)
 
     script = Path(tempfile.gettempdir()) / "samantha-update-swap.ps1"
     script.write_text(swap_script(install, staging, autostart.TASK, os.getpid(), install.parent / "update.log"),
                       encoding="utf-8")
     # Detached: it waits for this program to exit, swaps the folders, then restarts the server.
-    subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-                      "-File", str(script)], creationflags=0x00000008 | 0x00000200, close_fds=True)
+    proc.start_detached(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+                         "-File", str(script)])
 
 
 def restart_service() -> bool:

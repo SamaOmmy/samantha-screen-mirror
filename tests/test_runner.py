@@ -85,3 +85,28 @@ def test_closing_a_real_waitress_server_stops_run(cfg):
     server.close()
     thread.join(timeout=10)
     assert not thread.is_alive()
+
+
+def test_waits_for_tailscale_instead_of_giving_up(monkeypatch):
+    """Tailscale switched off for a while must not make the server exit and be relaunched."""
+    from samantha_mirror import tailscale
+
+    attempts = []
+
+    def ip():
+        attempts.append(1)
+        if len(attempts) < 30:
+            raise tailscale.BindError("no current Tailscale IPs")
+        return "100.64.0.9"
+
+    sleeps = []
+    monkeypatch.setattr(runner.tailscale, "tailscale_ip", ip)
+    monkeypatch.setattr(runner.time, "sleep", sleeps.append)
+    assert runner._wait_for_tailscale() == "100.64.0.9"
+    assert len(attempts) == 30 and set(sleeps) == {runner.TAILSCALE_POLL}
+
+
+def test_a_second_copy_is_refused(monkeypatch):
+    monkeypatch.setattr(runner, "LOCK_NAME", rf"Local\SamanthaTest{time.time_ns()}")
+    assert runner.already_running() is False
+    assert runner.already_running() is True

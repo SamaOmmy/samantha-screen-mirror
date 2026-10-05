@@ -21,10 +21,13 @@ from waitress import create_server
 from . import config, tailscale, updater
 from .server import create_app
 
-TAILSCALE_WAIT = 120       # seconds; at logon Tailscale may still be starting
+TAILSCALE_POLL = 10        # seconds between looks for the Tailscale address while it is not up
+TAILSCALE_LOG_EVERY = 300  # how often to repeat the "waiting for Tailscale" log line
 BIND_RETRY_SECONDS = 600   # how long to keep retrying while the address is not usable yet
 WATCHDOG_INTERVAL = 20     # seconds between self-checks
 WATCHDOG_FAILS = 3         # consecutive failed self-checks before the listener is rebuilt
+
+LOCK_NAME = r"Local\SamanthaScreenMirrorServer"  # single-instance lock, one per Windows session
 
 # `tailscale serve` (HTTPS) connects from this machine. Trust only it for X-Forwarded-*, so the real
 # client address and https scheme reach the app, and nobody else can fake them.
@@ -55,15 +58,38 @@ def _dpi_aware() -> None:
 
 
 def _wait_for_tailscale() -> str:
-    deadline = time.monotonic() + TAILSCALE_WAIT
+    """The Tailscale address, waiting as long as it takes for Tailscale to start and sign in.
+
+    Waiting here (quietly) beats exiting and being relaunched: the PC may simply have Tailscale
+    switched off for hours, and one calm process is better than a new one every few minutes.
+    """
+    last_logged = None
     while True:
         try:
             return tailscale.tailscale_ip()
         except tailscale.BindError as exc:
-            if time.monotonic() >= deadline:
-                raise
-            log.warning("%s Retrying...", exc)
-            time.sleep(5)
+            now = time.monotonic()
+            if last_logged is None or now - last_logged >= TAILSCALE_LOG_EVERY:
+                log.warning("%s Waiting for Tailscale (checking every %ss)...", exc, TAILSCALE_POLL)
+                last_logged = now
+            time.sleep(TAILSCALE_POLL)
+
+
+_lock_handles: list = []  # keeps the single-instance lock alive for the life of the process
+
+
+def already_running() -> bool:
+    """Take the single-instance lock. True if another copy of the server already holds it."""
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        handle = kernel32.CreateMutexW(None, False, LOCK_NAME)
+        if not handle:
+            return False
+        _lock_handles.append(handle)
+        return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
+    except Exception:
+        return False
 
 
 def address_not_ready(exc: OSError) -> bool:
@@ -91,11 +117,7 @@ def serve_forever(cfg: config.Config) -> int:
     deadline = time.monotonic() + BIND_RETRY_SECONDS
     announced = False
     while True:
-        try:
-            ip = _wait_for_tailscale()  # re-read each round: the address can change
-        except tailscale.BindError as exc:
-            log.error("%s", exc)
-            return 1
+        ip = _wait_for_tailscale()  # re-read each round: the address can change
         listen = f"{ip}:{cfg.port}" + (f" 127.0.0.1:{cfg.port}" if cfg.loopback else "")
         try:
             # send_bytes=1 so each JPEG frame is flushed immediately instead of buffered.
@@ -135,6 +157,13 @@ def serve_forever(cfg: config.Config) -> int:
 
 def run_server() -> int:
     _setup_logging()
+    if already_running():
+        message = "Samantha Screen Mirror is already running on this PC, so this copy is closing."
+        log.info(message)
+        if sys.stdout is not None:
+            print(message)
+            print("To stop it, run `samantha-mirror stop`.")
+        return 0
     _dpi_aware()
     try:
         cfg = config.load()

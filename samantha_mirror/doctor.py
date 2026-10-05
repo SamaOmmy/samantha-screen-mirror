@@ -88,10 +88,14 @@ def run() -> int:
             _check(r, OK if code == 200 else WARN, "Server responding", f"http://{ip}:{cfg.port}/ -> {code}")
         except Exception:
             _check(r, FAIL, "Server responding", f"nothing answers on {ip}:{cfg.port}",
-                   "Start it with `samantha-mirror run`, or install autostart: `samantha-mirror autostart install`.")
+                   "On this PC run `samantha-mirror start` (or `samantha-mirror setup` the first time).")
     state = autostart.status()
-    _check(r, OK if state != "missing" else WARN, "Starts automatically at logon", state,
-           "Optional: `samantha-mirror autostart install`")
+    if state == "disabled":
+        _check(r, WARN, "Starts automatically at logon", "stopped on purpose (`samantha-mirror stop`)",
+               "To turn it back on, run `samantha-mirror start`")
+    else:
+        _check(r, OK if state != "missing" else WARN, "Starts automatically at logon", state,
+               "Optional: `samantha-mirror autostart install`")
 
     try:
         newer = updater.available()

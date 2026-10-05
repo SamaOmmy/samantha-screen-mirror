@@ -85,6 +85,8 @@ For example `.\samantha-mirror.exe doctor`. Below, `samantha-mirror` stands for 
 | `samantha-mirror link` | Show the phone link and QR code |
 | `samantha-mirror doctor` | Check everything and say how to fix problems |
 | `samantha-mirror run` | Start the server in this window (Ctrl+C stops it) |
+| `samantha-mirror stop` | Stop the server and keep it stopped (also after a restart) |
+| `samantha-mirror start` | Start it again and let it start at logon again |
 | `samantha-mirror autostart install/remove/status` | Start hidden at every Windows logon |
 | `samantha-mirror update` | Check for and install a new version |
 | `samantha-mirror uninstall` | Remove autostart and the HTTPS setup (keeps your settings) |
@@ -174,6 +176,8 @@ Start with `samantha-mirror doctor`. Common causes:
   New-NetFirewallRule -DisplayName "Samantha Screen Mirror (Tailscale only)" -Direction Inbound `
     -Protocol TCP -LocalPort 8787 -RemoteAddress 100.64.0.0/10 -Action Allow
   ```
+- **I want it off for now**: run `samantha-mirror stop` on the PC. Killing it in Task Manager only works until the
+  next automatic check (within 5 minutes); `stop` keeps it off, `start` turns it back on.
 - **Choppy on mobile data**: pick the *Data saver* preset.
 
 ## Limitations

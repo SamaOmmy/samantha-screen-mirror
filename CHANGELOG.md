@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.2
+
+Fixes
+- **Terminal windows flashing open and closed, over and over.** The server runs with no window, but every time it
+  asked Tailscale, PowerShell or git something, Windows opened a console window for that helper. While Tailscale was
+  off this happened every few seconds, and the 5-minute restart trigger kept relaunching the server. All helper
+  programs now run fully hidden, and a test guards against new ones that are not.
+- **The server kept coming back after being killed.** Waiting for Tailscale no longer ends the process (it waits
+  quietly, however long that takes), so nothing is relaunched in a loop. A second copy now closes immediately
+  instead of fighting the first, and the task no longer has its own extra restart rule.
+- The log no longer fills with a "retrying" line every few seconds.
+
+New
+- `samantha-mirror stop` stops the server and keeps it stopped (also after a restart) until `samantha-mirror start`.
+  `doctor` says when it was stopped on purpose.
+
 ## 0.3.1
 
 Fixes

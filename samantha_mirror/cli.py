@@ -1,4 +1,4 @@
-"""Command line: samantha-mirror [run|setup|link|doctor|autostart|uninstall]"""
+"""Command line: samantha-mirror [run|setup|link|doctor|start|stop|autostart|update|uninstall]"""
 import argparse
 import sys
 
@@ -30,6 +30,8 @@ def _double_clicked() -> int:
             print(f"A new version is available: v{newer.version} (you have v{__version__}).")
             if ask("Update now?", True):
                 return run_update(yes=True)  # this window closes while the new version installs
+    if configured and autostart.status() == "disabled":
+        print("Note: the server is stopped on purpose. Run `samantha-mirror start` in this folder to turn it back on.\n")
     code = show_link() if configured else setup()
     try:
         input("\nPress Enter to close this window...")
@@ -53,6 +55,8 @@ def main(argv=None) -> int:
     u = sub.add_parser("update", help="check for a new version and install it")
     u.add_argument("--check", action="store_true", help="only say whether an update is available")
     u.add_argument("-y", "--yes", action="store_true", help="install without asking")
+    sub.add_parser("stop", help="stop the server and keep it stopped (until you run `start`)")
+    sub.add_parser("start", help="start the server again (and let it start at logon)")
     sub.add_parser("uninstall", help="remove autostart and the HTTPS setup (keeps your settings)")
 
     args = p.parse_args(argv)
@@ -82,6 +86,26 @@ def main(argv=None) -> int:
             print("Removed.")
         else:
             print(f"Autostart: {autostart.status()}")
+        return 0
+    if cmd == "stop":
+        from . import autostart
+        if autostart.status() == "missing":
+            print("Nothing to stop: start-at-logon is not set up. (A copy started with `run` stops with Ctrl+C.)")
+            return 0
+        autostart.pause()
+        print("Stopped. It will stay stopped, including after a restart, until you run `samantha-mirror start`.")
+        return 0
+    if cmd == "start":
+        from . import autostart
+        if autostart.status() == "missing":
+            print("Start-at-logon is not set up yet. Run `samantha-mirror setup` first.")
+            return 1
+        try:
+            autostart.resume()
+        except RuntimeError as exc:
+            print(f"Could not start it: {exc}")
+            return 1
+        print("Started. It will also start at every logon again.")
         return 0
     if cmd == "update":
         from .updater import run_update
