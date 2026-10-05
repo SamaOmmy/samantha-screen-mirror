@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 New
 - **60 fps.** A *Smooth* preset (60 fps). The capture loop now keeps a fixed frame schedule on a high-resolution clock
