@@ -77,7 +77,7 @@ button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visi
 .sheet select { width: 100%; }
 .sheet input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
 .sheet input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
-.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.seg { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .seg button { flex-direction: column; padding: 6px 4px; line-height: 1.2; }
 .seg small { color: var(--muted); font-size: 11px; }
 .seg button.on { border-color: var(--accent); background: #12263a; }

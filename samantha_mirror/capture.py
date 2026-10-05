@@ -30,6 +30,7 @@ RETRY_DELAY = 1.0   # seconds to wait after a capture error before trying again
 IDLE_POLL = 0.002   # seconds between checks while the screen isn't changing
 DX_FAIL_LIMIT = 3   # runtime DXGI failures in a row before we fall back to mss
 DX_RETRY_AFTER = 300  # seconds on mss before trying the fast DXGI path again (e.g. after the PC was locked)
+EARLY = 0.003       # start looking for the next frame this long before it is due (we poll until it has changed)
 
 
 def _cursor_pos():
@@ -183,7 +184,7 @@ class FrameSource:
         monitor = None
         last_key = None
         frame_id = 0
-        last_sent = 0.0
+        due = 0.0  # when the next frame is due; a fixed schedule, so one late frame doesn't delay all later ones
         try:
             while True:
                 try:
@@ -206,10 +207,13 @@ class FrameSource:
 
                     # Hold the fps cap by waiting *before* grabbing, so the picture we send
                     # is as fresh as possible, then poll quickly while nothing changes.
-                    wait = last_sent + 1.0 / s["fps"] - time.monotonic()
+                    interval = 1.0 / s["fps"]
+                    now = time.perf_counter()  # not monotonic(): that only ticks every ~15 ms on Windows
+                    if due < now - interval:  # first frame, or the screen sat still: don't try to catch up
+                        due = now
+                    wait = due - EARLY - now
                     if wait > 0:
                         time.sleep(wait)
-                    grabbed_at = time.monotonic()
                     buf, size, changed = grabber.grab()
                     dx_failures = 0
                     frame_id += changed
@@ -228,7 +232,7 @@ class FrameSource:
                             self._seq += 1
                         self._cond.notify_all()
                     if jpeg is not None:
-                        last_sent = grabbed_at  # pace from the grab, so encode time doesn't add to the interval
+                        due += interval
                     else:
                         time.sleep(IDLE_POLL)
                 except Exception as exc:  # e.g. locked screen, UAC prompt, display change

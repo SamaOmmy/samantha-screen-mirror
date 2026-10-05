@@ -20,7 +20,8 @@ nobody else (including this project) can see it.
 ## Features
 
 - **Installable app** (PWA) with pinch-zoom, screenshots, quality presets and a screen picker
-- **Fast**: about 29 fps at 1440x810 and about 14 ms capture-to-send delay in testing (GPU capture)
+- **Fast**: up to **60 fps** (the *Smooth* preset) with GPU capture. Measured on a 60 Hz screen: 59.7 fps over the
+  real stream at 1440x810, 16.8 ms median gap between frames. The default is 30 fps to be gentle on batteries and data.
 - **Private**: only reachable inside your tailnet, protected by a secret token, **view-only**
 - **Easy setup**: one script installs everything and shows a QR code for your phone
 
@@ -120,6 +121,11 @@ sign-in.
 | Data saver | 960x540 | 15 | 0.5 MB/s |
 | Balanced (default) | 1440x810 | 30 | 3 MB/s |
 | Sharp | 1920x1080 | 30 | 5 MB/s |
+| Smooth | 1440x810 | 60 | 6 MB/s |
+
+*Smooth* shows motion as it happens, but it sends twice the data, so use it on Wi-Fi, and an older phone may not
+be able to draw 60 pictures a second (the fps shown at the top of the app tells you what your phone really gets).
+A 60 Hz screen cannot show more than 60 fps; a faster screen is still captured at up to 60.
 
 A still screen costs almost nothing because frames are only sent when something changes.
 

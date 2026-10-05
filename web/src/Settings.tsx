@@ -7,6 +7,7 @@ const PRESETS: { name: string; hint: string; values: Pick<S, "fps" | "quality" |
   { name: "Data saver", hint: "Mobile data", values: { fps: 15, quality: 50, scale: 0.5 } },
   { name: "Balanced", hint: "Default", values: { fps: 30, quality: 70, scale: 0.75 } },
   { name: "Sharp", hint: "Wi-Fi", values: { fps: 30, quality: 85, scale: 1 } },
+  { name: "Smooth", hint: "60 fps, Wi-Fi", values: { fps: 60, quality: 65, scale: 0.75 } },
 ];
 
 interface Props {

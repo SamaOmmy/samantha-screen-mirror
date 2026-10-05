@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+New
+- **60 fps.** A *Smooth* preset (60 fps). The capture loop now keeps a fixed frame schedule on a high-resolution clock
+  (it used a clock that only ticks every ~15 ms on Windows, so a 60 fps cap delivered about 50). Measured with a
+  60 fps animation on screen: 59.7 fps over the real stream, 16.8 ms median and about 20 ms 95th-percentile gap
+  between frames; a 30 fps cap now gives exactly 30.
+
 Fixes
 - An update could fail to swap folders because the task's 5-minute trigger relaunched the server mid-swap. The swap now
   disables the task while it works and puts it back as it found it (a server you stopped with `stop` stays stopped).
