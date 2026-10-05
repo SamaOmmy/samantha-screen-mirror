@@ -164,3 +164,35 @@ def test_a_failed_swap_puts_the_old_version_back(tmp_path):
     install, log = run_swap(tmp_path, new_exists=False)  # the staged folder is missing: the swap must fail
     assert (install / "old.txt").exists()
     assert "FAILED" in log.read_text()
+
+
+def _task_state(name: str) -> str:
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", f"(Get-ScheduledTask -TaskName '{name}').State"],
+                         capture_output=True, text=True, timeout=60)
+    return out.stdout.strip()
+
+
+@pytestmark_ps
+@pytest.mark.parametrize("disabled", [True, False])
+def test_swap_leaves_the_task_as_it_found_it(tmp_path, disabled):
+    """A server stopped on purpose must stay stopped; a running one must come back (and not be relaunched mid-swap)."""
+    name = f"SamanthaSwapTest{'Off' if disabled else 'On'}"
+    ps = (f"$a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c exit'; "
+          f"$t = New-ScheduledTaskTrigger -Once -At (Get-Date).AddDays(30); "
+          f"Register-ScheduledTask -TaskName '{name}' -Action $a -Trigger $t -Force | Out-Null; "
+          + (f"Disable-ScheduledTask -TaskName '{name}' | Out-Null" if disabled else ""))
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True, capture_output=True, timeout=60)
+    try:
+        install = tmp_path / "SamanthaScreenMirror"
+        new = tmp_path / "SamanthaScreenMirror.update"
+        install.mkdir()
+        new.mkdir()
+        script = tmp_path / "swap.ps1"
+        script.write_text(updater.swap_script(install, new, name, 999999, tmp_path / "update.log"), encoding="utf-8")
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                       check=True, capture_output=True, timeout=120)
+        assert (_task_state(name) == "Disabled") is disabled
+    finally:
+        subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"Unregister-ScheduledTask -TaskName '{name}' -Confirm:$false -ErrorAction SilentlyContinue"],
+                       capture_output=True, timeout=60)

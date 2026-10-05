@@ -192,6 +192,9 @@ $install = {q(install)}; $new = {q(new)}; $old = $install + '.old'; $task = {q(t
 function Log($m) {{ Add-Content -Path $log -Value ((Get-Date -Format s) + ' ' + $m) }}
 try {{
   Get-Process -Id {caller_pid} -ErrorAction SilentlyContinue | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
+  # Disable the task while swapping: its 5-minute trigger would otherwise relaunch the server in the middle.
+  $wasDisabled = (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue).State -eq 'Disabled'
+  Disable-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue | Out-Null
   Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
   Get-Process samantha-mirror-service, samantha-mirror -ErrorAction SilentlyContinue |
     Where-Object {{ $_.Path -and $_.Path.StartsWith($install, [StringComparison]::OrdinalIgnoreCase) }} |
@@ -208,7 +211,10 @@ try {{
   Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue
   Log 'updated'
 }} catch {{ Log ('FAILED: ' + $_) }}
-Start-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+if (-not $wasDisabled) {{
+  Enable-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue | Out-Null
+  Start-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+}}
 """
 
 

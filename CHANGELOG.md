@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+Fixes
+- An update could fail to swap folders because the task's 5-minute trigger relaunched the server mid-swap. The swap now
+  disables the task while it works and puts it back as it found it (a server you stopped with `stop` stays stopped).
+
 ## 0.3.3
 
 Fixes
