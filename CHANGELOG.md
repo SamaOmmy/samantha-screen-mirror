@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3
+
+Fixes
+- **Scanning the QR code sometimes still asked for the access token.** Once the app had been opened on a phone, its
+  offline cache answered the page load before the PC could sign the phone in. Page loads now go to the PC first
+  (the cache is only used when the PC cannot be reached), and the app also signs itself in from the link and
+  removes the token from the address bar.
+  After updating, open the app once on the phone (it refreshes itself), then scan again.
+
 ## 0.3.2
 
 Fixes
