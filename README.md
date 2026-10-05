@@ -164,6 +164,11 @@ settings and token are kept; a failed swap restores the old version). The server
 `samantha-mirror.exe` also offers the update. The PC checks GitHub every 12 hours; `SM_UPDATE_CHECK=0` turns that
 off. Updates are only ever started on the PC, never from the phone.
 
+**Updating from v0.4.0 or older (one time):** those versions cannot swap their own folder while a window is open
+inside it. Run that one update from a different folder, for example in PowerShell:
+`cd $HOME`, then run `samantha-mirror.exe update` using its full path (for example `& "D:\Apps\SamanthaScreenMirror\samantha-mirror.exe" update`).
+From v0.4.1 on, it works from anywhere.
+
 ## Troubleshooting
 
 Start with `samantha-mirror doctor`. Common causes:

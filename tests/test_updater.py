@@ -2,6 +2,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -196,3 +197,30 @@ def test_swap_leaves_the_task_as_it_found_it(tmp_path, disabled):
         subprocess.run(["powershell", "-NoProfile", "-Command",
                         f"Unregister-ScheduledTask -TaskName '{name}' -Confirm:$false -ErrorAction SilentlyContinue"],
                        capture_output=True, timeout=60)
+
+
+@pytestmark_ps
+def test_swap_works_while_a_program_sits_inside_the_install_folder(tmp_path):
+    """The README tells people to run `update` from the program's folder, and Windows will not rename a folder
+    that a program (their PowerShell window) has as its current directory. The swap must not need to."""
+    install = tmp_path / "SamanthaScreenMirror"
+    new = tmp_path / "SamanthaScreenMirror.update"
+    install.mkdir()
+    (install / "old.txt").write_text("old")
+    new.mkdir()
+    (new / "new.txt").write_text("new")
+    (new / "_internal").mkdir()
+    (new / "_internal" / "lib.txt").write_text("lib")
+    holder = subprocess.Popen(["powershell", "-NoProfile", "-Command", "Start-Sleep 120"], cwd=install)
+    try:
+        time.sleep(2)  # let it start, so the folder really is in use
+        script = tmp_path / "swap.ps1"
+        script.write_text(updater.swap_script(install, new, "NoSuchTask-SamanthaTest", 999999, tmp_path / "update.log"),
+                          encoding="utf-8")
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                       check=True, capture_output=True, timeout=120)
+    finally:
+        holder.kill()
+    assert (install / "new.txt").exists() and (install / "_internal" / "lib.txt").exists()
+    assert not (install / "old.txt").exists() and not new.exists() and not (tmp_path / "SamanthaScreenMirror.old").exists()
+    assert "updated" in (tmp_path / "update.log").read_text()

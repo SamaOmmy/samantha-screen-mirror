@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1
+
+Fixes
+- **Updating failed with "could not move the old version out of the way"** when `samantha-mirror update` was run from
+  inside the program's folder (which is what the README says to do), and probably when double-clicking the exe.
+  Windows will not rename a folder that a program has open as its current directory. The update now moves the
+  folder's *contents* instead, so it works from anywhere, and still rolls back if anything goes wrong.
+  Going from an older version to this one still uses the older swap, so run that one update from a different
+  folder (see the README, "Updating"). Updates after that work from anywhere.
+
 ## 0.4.0
 
 New

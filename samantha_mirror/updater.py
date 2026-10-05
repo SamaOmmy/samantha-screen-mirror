@@ -200,15 +200,30 @@ try {{
     Where-Object {{ $_.Path -and $_.Path.StartsWith($install, [StringComparison]::OrdinalIgnoreCase) }} |
     Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
-  if (Test-Path $old) {{ Remove-Item $old -Recurse -Force }}
-  $moved = $false
-  for ($i = 0; $i -lt 15 -and -not $moved; $i++) {{
-    try {{ Rename-Item -Path $install -NewName (Split-Path $old -Leaf); $moved = $true }} catch {{ Start-Sleep -Seconds 2 }}
+  if (-not (Test-Path -LiteralPath $new)) {{ throw 'the downloaded update is missing' }}
+  # Move the folder's CONTENTS, never the folder itself: Windows will not rename a folder that any program has
+  # open as its current directory (for example a PowerShell window the user ran `update` from).
+  function Move-All($from, $to) {{
+    foreach ($item in Get-ChildItem -LiteralPath $from -Force) {{
+      for ($i = 0; ; $i++) {{
+        try {{ Move-Item -LiteralPath $item.FullName -Destination $to -ErrorAction Stop; break }}
+        catch {{ if ($i -ge 14) {{ throw }}; Start-Sleep -Seconds 2 }}   # a virus scanner may hold a file briefly
+      }}
+    }}
   }}
-  if (-not $moved) {{ throw 'could not move the old version out of the way (is it still running?)' }}
-  try {{ Rename-Item -Path $new -NewName (Split-Path $install -Leaf) }}
-  catch {{ Rename-Item -Path $old -NewName (Split-Path $install -Leaf); throw }}
-  Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $old) {{ Remove-Item -LiteralPath $old -Recurse -Force }}
+  New-Item -ItemType Directory -Path $old | Out-Null
+  try {{
+    Move-All $install $old
+    Move-All $new $install
+  }} catch {{
+    $why = $_
+    foreach ($item in Get-ChildItem -LiteralPath $install -Force) {{ Remove-Item -LiteralPath $item.FullName -Recurse -Force -ErrorAction SilentlyContinue }}
+    Move-All $old $install   # put the old version back
+    throw $why
+  }}
+  Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $new -Recurse -Force -ErrorAction SilentlyContinue
   Log 'updated'
 }} catch {{ Log ('FAILED: ' + $_) }}
 if (-not $wasDisabled) {{
